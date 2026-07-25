@@ -15,8 +15,8 @@ Para rodar o VaultSecure no seu computador localmente a partir deste repositóri
 ### Passo a Passo
 1. **Clonar o Repositório:**
    ```bash
-   git clone https://github.com/seu-usuario/vault-secure.git
-   cd vault-secure
+   git clone https://github.com/itsbravos/VaultSecure.git
+   cd VaultSecure
    ```
 
 2. **Instalar Dependências:**
@@ -36,6 +36,17 @@ Para rodar o VaultSecure no seu computador localmente a partir deste repositóri
    ```
    Os arquivos compilados ficarão na pasta `dist/` para servir em qualquer servidor web ou usar offline.
 
+5. **Instalar como Aplicativo no PC (Windows/Mac/Linux):**
+   O VaultSecure é um PWA (Progressive Web App) com Service Worker — funciona instalado, com ícone próprio, janela separada e cache offline dos arquivos da aplicação.
+
+   > ⚠️ O botão de instalar e o Service Worker só ficam ativos em build de produção (`npm run dev` roda sem eles, para não atrapalhar o hot-reload). Além disso, o navegador só permite instalar/registrar Service Worker em contexto seguro: **HTTPS** ou **`localhost`**.
+
+   ```bash
+   npm run build
+   npm run preview
+   ```
+   Abra `http://localhost:4173` no Chrome ou Edge e clique no ícone de **instalar** (⊕) que aparece na barra de endereço, ou no menu **⋮ > Instalar VaultSecure**. O app passa a abrir em janela própria, com ícone na área de trabalho/menu iniciar, e continua funcionando **offline** depois do primeiro carregamento.
+
 ---
 
 ## 📱 Como Instalar no Celular Android (A partir do Repositório GitHub)
@@ -49,19 +60,22 @@ O próprio GitHub permite hospedar o aplicativo do cofre gratuitamente em 1 cliq
 3. O GitHub gerará a URL segura com HTTPS: `https://seu-usuario.github.io/vault-secure/`.
 4. Abra esse link no **Google Chrome** do seu Android.
 5. Toque nos **⋮ (3 pontinhos)** do Chrome no canto superior direito e selecione **"Instalar aplicativo"** ou **"Adicionar à tela inicial"**.
-6. O VaultSecure será instalado no seu Android como um aplicativo nativo (PWA), rodando em tela cheia e funcionando **100% offline** a partir daí!
+6. O VaultSecure será instalado no seu Android como um app (PWA), com ícone próprio, rodando em tela cheia e funcionando **offline** depois do primeiro carregamento (o Service Worker faz cache dos arquivos da aplicação).
 
 ---
 
 ### 📶 Método 2: Via Rede Wi-Fi Local do Computador
 Se você não quiser publicar no GitHub Pages:
-1. No seu computador com o repositório clonado, inicie o servidor na rede local:
+1. No seu computador com o repositório clonado, gere o build de produção e sirva-o na rede local:
    ```bash
-   npm run dev -- --host
+   npm run build
+   npm run preview -- --host
    ```
-2. O terminal exibirá o endereço IP local (exemplo: `http://192.168.1.15:3000`).
+2. O terminal exibirá o endereço IP local (exemplo: `http://192.168.1.15:4173`).
 3. No celular Android (conectado na mesma rede Wi-Fi do computador), abra o Chrome e acesse o endereço IP.
 4. Toque no menu do Chrome **(⋮)** e clique em **"Instalar aplicativo"** ou **"Adicionar à tela inicial"**.
+
+   > ⚠️ Navegadores só permitem instalar o app e ativar o cache offline (Service Worker) em contexto seguro (**HTTPS** ou **localhost**). Um IP puro na rede local (`http://192.168.x.x`) normalmente **não** conta como seguro — o Chrome pode abrir o site normalmente, mas sem o botão de instalar nem cache offline. Para instalação de verdade no celular, prefira o **Método 1** (GitHub Pages, já em HTTPS) ou o **Método 3** (APK nativo).
 
 ---
 
@@ -83,7 +97,7 @@ Como o VaultSecure opera em modelo **100% Local / Zero-Server**, a sincronizaç�
    - Será baixado um arquivo contendo todo o seu cofre.
 
 2. **Segurança do Arquivo `.vault`:**
-   - O arquivo `.vault` é **fortemente criptografado com AES-256-GCM** usando a sua Senha Mestra + Salt PBKDF2 de 100.000 iterações.
+   - O arquivo `.vault` é **fortemente criptografado com AES-256-GCM** usando a sua Senha Mestra + Salt PBKDF2 de 250.000 iterações. Cada cofre gera seu próprio salt aleatório de 16 bytes na criação (via `window.crypto.getRandomValues`), nunca reaproveitado entre instalações — o que evita ataques com rainbow tables pré-computadas.
    - Você pode enviar este arquivo com segurança por e-mail, WhatsApp, pendrive, Google Drive ou Bluetooth: **ninguém conseguirá abrir sem a sua Senha Mestra**.
 
 3. **No dispositivo de destino (ex: Celular Android ou PC 2):**
@@ -93,10 +107,22 @@ Como o VaultSecure opera em modelo **100% Local / Zero-Server**, a sincronizaç�
 
 ---
 
+## 🧪 Testes
+
+O projeto usa [Vitest](https://vitest.dev) para testes unitários, cobrindo principalmente a lógica de criptografia (`src/lib/crypto.ts`): derivação de chave via PBKDF2, round-trip de criptografia/descriptografia AES-256-GCM, geração de salt/IV e força de senha.
+
+```bash
+npm test              # roda a suíte uma vez
+npm run test:watch    # modo watch
+npm run test:coverage # com relatório de cobertura
+```
+
+---
+
 ## 🛡️ Arquitetura de Segurança
 
 - **Zero-Knowledge**: A Senha Mestra nunca é enviada para nenhum servidor nem armazenada em texto puro.
-- **Derivação de Chaves**: PBKDF2 com HMAC-SHA256 e 100.000 iterações.
+- **Derivação de Chaves**: PBKDF2 com HMAC-SHA256 e 250.000 iterações, com salt aleatório de 16 bytes único por cofre.
 - **Criptografia Simétrica**: AES-256-GCM com IV aleatório de 96-bits para cada registro.
 - **Verificação de Vazamentos (k-Anonymity)**: Consulta a base do *HaveIBeenPwned* utilizando apenas os primeiros 5 caracteres do hash SHA-1 da senha, mantendo a privacidade total.
 - **Gerador de TOTP (2FA)**: Suporte integrado para códigos de autenticação de dois fatores.
