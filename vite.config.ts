@@ -5,7 +5,12 @@ import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  // GitHub Pages serves this repo under /VaultSecure/, not the domain root, so
+  // every asset URL and the PWA manifest's start_url/scope must share that base.
+  const base = process.env.GITHUB_PAGES === 'true' ? '/VaultSecure/' : '/';
+
   return {
+    base,
     plugins: [
       react(),
       tailwindcss(),
@@ -16,8 +21,8 @@ export default defineConfig(() => {
           name: 'VaultSecure - Cofre de Senhas Criptografado',
           short_name: 'VaultSecure',
           description: 'Gerenciador local e seguro de senhas com criptografia AES-256-GCM, PBKDF2 e salt único por cofre.',
-          start_url: '/',
-          scope: '/',
+          start_url: base,
+          scope: base,
           display: 'standalone',
           orientation: 'portrait-primary',
           background_color: '#0A0A0A',

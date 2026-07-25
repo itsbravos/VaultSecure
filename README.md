@@ -54,10 +54,10 @@ Para rodar o VaultSecure no seu computador localmente a partir deste repositóri
 Como o projeto é hospedado diretamente no **GitHub sem um site de terceiros**, você tem 3 opções simples e 100% gratuitas para instalar o VaultSecure no seu celular Android:
 
 ### 🌟 Método 1: Via GitHub Pages Grátis (Mais Recomendado)
-O próprio GitHub permite hospedar o aplicativo do cofre gratuitamente em 1 clique:
+O repositório já inclui um workflow (`.github/workflows/deploy-pages.yml`) que builda e publica o app automaticamente a cada push na `main`. Só falta habilitar o Pages uma única vez:
 1. No seu repositório do GitHub, vá em **Settings > Pages**.
-2. Em **Source**, selecione **GitHub Actions** ou a branch `main` / `gh-pages` com a pasta `/dist`.
-3. O GitHub gerará a URL segura com HTTPS: `https://seu-usuario.github.io/vault-secure/`.
+2. Em **Source**, selecione **GitHub Actions** (não branch `main`/`gh-pages` — o workflow já cuida do build, incluindo o caminho correto `/VaultSecure/` para os assets e o manifest do PWA).
+3. Aguarde a Action **"Deploy to GitHub Pages"** rodar (aba **Actions** do repositório). Ao terminar, o GitHub mostrará a URL segura com HTTPS: `https://itsbravos.github.io/VaultSecure/`.
 4. Abra esse link no **Google Chrome** do seu Android.
 5. Toque nos **⋮ (3 pontinhos)** do Chrome no canto superior direito e selecione **"Instalar aplicativo"** ou **"Adicionar à tela inicial"**.
 6. O VaultSecure será instalado no seu Android como um app (PWA), com ícone próprio, rodando em tela cheia e funcionando **offline** depois do primeiro carregamento (o Service Worker faz cache dos arquivos da aplicação).
