@@ -1,0 +1,6 @@
+{
+  "name": "VaultSecure - Cofre de Senhas Criptografado",
+  "description": "Gerenciador local de senhas com criptografia de ponta a ponta (AES-256-GCM), autenticação via Google Authenticator (TOTP) e Certificado Digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
