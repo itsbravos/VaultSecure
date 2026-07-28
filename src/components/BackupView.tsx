@@ -36,6 +36,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
   settings,
 }) => {
   const [backupPassphrase, setBackupPassphrase] = useState('');
+  const [importPassphrase, setImportPassphrase] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -112,32 +113,43 @@ export const BackupView: React.FC<BackupViewProps> = ({
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
 
-        if (parsed.ciphertext && parsed.iv && masterKey) {
+        if (parsed.ciphertext && parsed.iv && parsed.salt) {
+          if (!importPassphrase.trim()) {
+            setImportError(
+              'Digite a senha do arquivo de backup antes de selecioná-lo. Use a Senha Mestra do dispositivo onde o backup foi criado, ou a Senha Personalizada de Backup, se você definiu uma na exportação.'
+            );
+            setImportStatus(null);
+            e.target.value = '';
+            return;
+          }
+
           try {
-            let importKey = masterKey;
-            if (backupPassphrase.trim()) {
-              const passSalt = new Uint8Array(
-                atob(parsed.salt)
-                  .split('')
-                  .map(c => c.charCodeAt(0))
-              );
-              importKey = await deriveMasterKey(
-                backupPassphrase,
-                passSalt
-              );
-            }
+            // Always derive the key from the salt embedded in the file itself,
+            // never from the current device's live session key — the salt is
+            // unique per installation, so reusing the local masterKey would
+            // fail even when the master passwords match across devices.
+            const fileSalt = new Uint8Array(
+              atob(parsed.salt)
+                .split('')
+                .map(c => c.charCodeAt(0))
+            );
+            const importKey = await deriveMasterKey(
+              importPassphrase,
+              fileSalt
+            );
 
             const decryptedItems = (await decryptVaultData(
               parsed,
               importKey
             )) as VaultItem[];
             onImportItems(decryptedItems);
+            setImportPassphrase('');
             setImportStatus(
               `Sucesso! ${decryptedItems.length} registros restaurados no cofre.`
             );
           } catch (err) {
             setImportError(
-              'Falha ao descriptografar. Verifique se a Senha de Backup está correta.'
+              'Falha ao descriptografar. Verifique se a senha digitada é a Senha Mestra do dispositivo original (ou a Senha Personalizada de Backup usada na exportação).'
             );
             setImportStatus(null);
           }
@@ -253,6 +265,22 @@ export const BackupView: React.FC<BackupViewProps> = ({
           <p className={`text-xs ${theme.textMuted} font-mono leading-relaxed`}>
             Selecione um arquivo <strong>.vault</strong> criado anteriormente neste ou em outro dispositivo para mesclar e restaurar suas credenciais.
           </p>
+
+          <div className="space-y-2">
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5 font-mono`}>
+              <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Senha do Arquivo de Backup
+            </label>
+            <input
+              type="password"
+              value={importPassphrase}
+              onChange={e => setImportPassphrase(e.target.value)}
+              placeholder="Senha Mestra de origem ou Senha Personalizada usada no export..."
+              className={`w-full ${theme.bgInput} border ${theme.borderMain} rounded-xl p-3 text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono ${theme.inputDepth}`}
+            />
+            <p className={`text-[10px] ${theme.textMuted} font-mono leading-relaxed`}>
+              Se o backup foi criado em outro computador com a Senha Mestra dele, digite <strong>essa</strong> senha aqui (não a deste dispositivo). Se você definiu uma Senha Personalizada de Backup ao exportar, use ela.
+            </p>
+          </div>
 
           <div className={`p-6 ${theme.bgCardInner} border-2 border-dashed ${theme.borderInner} hover:border-emerald-500/60 rounded-xl text-center space-y-3 transition-colors relative shadow-inner`}>
             <input
