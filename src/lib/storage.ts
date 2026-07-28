@@ -286,7 +286,10 @@ export function saveVaultSettings(settings: VaultSettings): void {
 /**
  * Perform Security Audit on all items
  */
-export function generateSecurityAuditReport(items: VaultItem[]): SecurityReport {
+export function generateSecurityAuditReport(
+  items: VaultItem[],
+  onlineLeakedIds?: Set<string>
+): SecurityReport {
   let totalScoreSum = 0;
   const weakItems: VaultItem[] = [];
   const leakedItems: VaultItem[] = [];
@@ -304,7 +307,7 @@ export function generateSecurityAuditReport(items: VaultItem[]): SecurityReport 
         weakItems.push(item);
       }
 
-      if (isLocalLeakedPassword(item.password)) {
+      if (isLocalLeakedPassword(item.password) || onlineLeakedIds?.has(item.id)) {
         leakedItems.push(item);
       }
 

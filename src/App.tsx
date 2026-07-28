@@ -93,6 +93,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [clipboardWarning, setClipboardWarning] = useState<{ label: string } | null>(null);
+  const [onlineLeakedIds, setOnlineLeakedIds] = useState<Set<string>>(new Set());
 
   // Auto-Lock Inactivity Timer State
   const [autoLockSecondsLeft, setAutoLockSecondsLeft] = useState<number>(
@@ -456,8 +457,8 @@ export default function App() {
 
   // Security Audit Report
   const securityReport: SecurityReport = useMemo(() => {
-    return generateSecurityAuditReport(items);
-  }, [items]);
+    return generateSecurityAuditReport(items, onlineLeakedIds);
+  }, [items, onlineLeakedIds]);
 
   // RENDER LOCK SCREEN IF LOCKED
   if (!session.isUnlocked) {
@@ -587,6 +588,9 @@ export default function App() {
                   }}
                   onOpenAutoFillModal={() => setIsAutoFillModalOpen(true)}
                   onSelectView={v => setActiveView(v as any)}
+                  onOnlineBreachResults={ids =>
+                    setOnlineLeakedIds(prev => new Set([...prev, ...ids]))
+                  }
                 />
               </motion.div>
             )}

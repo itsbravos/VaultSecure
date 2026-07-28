@@ -36,6 +36,7 @@ interface SecurityAuditViewProps {
   onOpenAddItem?: (category?: ItemCategory) => void;
   onOpenAutoFillModal?: () => void;
   onSelectView?: (view: string) => void;
+  onOnlineBreachResults?: (leakedItemIds: string[]) => void;
 }
 
 export function formatPasswordAge(timestamp?: number): string {
@@ -67,6 +68,7 @@ export const SecurityAuditView: React.FC<SecurityAuditViewProps> = ({
   onOpenAddItem,
   onOpenAutoFillModal,
   onSelectView,
+  onOnlineBreachResults,
 }) => {
   const accent = getAccent(settings?.accentColor);
   const theme = getTheme(settings?.theme);
@@ -74,14 +76,12 @@ export const SecurityAuditView: React.FC<SecurityAuditViewProps> = ({
   // Manual HIBP Breach Scanner State
   const [isScanningBreaches, setIsScanningBreaches] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
-  const [onlineLeakedItems, setOnlineLeakedItems] = useState<VaultItem[]>([]);
   const [scanStatusMsg, setScanStatusMsg] = useState<string | null>(null);
 
   const handleRunBreachCheck = async () => {
     if (itemsWithPassword.length === 0) return;
     setIsScanningBreaches(true);
     setScanProgress(0);
-    setOnlineLeakedItems([]);
     setScanStatusMsg('Iniciando verificação k-Anonymity (Zero-Knowledge)...');
 
     const found: VaultItem[] = [];
@@ -96,13 +96,16 @@ export const SecurityAuditView: React.FC<SecurityAuditViewProps> = ({
       setScanProgress(Math.round(((i + 1) / itemsWithPassword.length) * 100));
     }
 
-    setOnlineLeakedItems(found);
     setIsScanningBreaches(false);
     setScanStatusMsg(
       found.length > 0
         ? `Varredura concluída! ${found.length} senha(s) encontrada(s) em vazamentos conhecidos.`
         : 'Varredura concluída! Nenhuma das suas senhas foi encontrada na base de vazamentos.'
     );
+
+    if (found.length > 0) {
+      onOnlineBreachResults?.(found.map(item => item.id));
+    }
   };
 
   // Calculate Strong Count (items that are logins/items with password that are not weak, reused or leaked)
