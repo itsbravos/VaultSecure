@@ -311,20 +311,30 @@ export const BackupView: React.FC<BackupViewProps> = ({
               Cofre a Exportar
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {SCOPE_OPTIONS.map(opt => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setExportScope(opt.id)}
-                  className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                    exportScope === opt.id
-                      ? `${accent.borderAccent} ${accent.badgeBg} ${accent.textAccent}`
-                      : `${theme.borderMain} ${theme.bgCardInner} ${theme.textMuted}`
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {SCOPE_OPTIONS.map(opt => {
+                const isActive = exportScope === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setExportScope(opt.id)}
+                    className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                      isActive ? `${theme.bgCardInner} ${accent.borderAccent}` : `${theme.bgCardInner} ${theme.borderInner}`
+                    }`}
+                  >
+                    <div
+                      className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                      style={{
+                        backgroundColor: isActive ? accent.colorHex : 'transparent',
+                        borderColor: isActive ? accent.colorHex : theme.isLight ? '#9CA3AF' : '#4B5563',
+                      }}
+                    />
+                    <span className={isActive ? `${theme.textPrimary} font-bold` : theme.textSecondary}>
+                      {opt.label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -453,24 +463,38 @@ export const BackupView: React.FC<BackupViewProps> = ({
               <button
                 type="button"
                 onClick={() => setImportMode('merge')}
-                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                  importMode === 'merge'
-                    ? `${accent.borderAccent} ${accent.badgeBg} ${accent.textAccent}`
-                    : `${theme.borderMain} ${theme.bgCardInner} ${theme.textMuted}`
+                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  importMode === 'merge' ? `${theme.bgCardInner} ${accent.borderAccent}` : `${theme.bgCardInner} ${theme.borderInner}`
                 }`}
               >
-                Mesclar (manter existentes e adicionar novos)
+                <div
+                  className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                  style={{
+                    backgroundColor: importMode === 'merge' ? accent.colorHex : 'transparent',
+                    borderColor: importMode === 'merge' ? accent.colorHex : theme.isLight ? '#9CA3AF' : '#4B5563',
+                  }}
+                />
+                <span className={importMode === 'merge' ? `${theme.textPrimary} font-bold` : theme.textSecondary}>
+                  Mesclar (manter existentes e adicionar novos)
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setImportMode('replace')}
-                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                  importMode === 'replace'
-                    ? 'border-red-500/60 bg-red-500/10 text-red-400'
-                    : `${theme.borderMain} ${theme.bgCardInner} ${theme.textMuted}`
+                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  importMode === 'replace' ? `${theme.bgCardInner} border-red-500` : `${theme.bgCardInner} ${theme.borderInner}`
                 }`}
               >
-                Substituir (apaga o que já existe)
+                <div
+                  className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                  style={{
+                    backgroundColor: importMode === 'replace' ? '#EF4444' : 'transparent',
+                    borderColor: importMode === 'replace' ? '#EF4444' : theme.isLight ? '#9CA3AF' : '#4B5563',
+                  }}
+                />
+                <span className={importMode === 'replace' ? `${theme.textPrimary} font-bold` : theme.textSecondary}>
+                  Substituir (apaga o que já existe)
+                </span>
               </button>
             </div>
           </div>

@@ -268,20 +268,28 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-300 block">Cofre a Exportar</label>
               <div className="grid grid-cols-2 gap-2">
-                {SCOPE_OPTIONS.map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setExportScope(opt.id)}
-                    className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                      exportScope === opt.id
-                        ? 'border-indigo-500/60 bg-indigo-950/60 text-indigo-300'
-                        : 'border-slate-800 bg-slate-950 text-slate-400'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                {SCOPE_OPTIONS.map(opt => {
+                  const isActive = exportScope === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setExportScope(opt.id)}
+                      className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                        isActive ? 'bg-slate-950 border-indigo-500' : 'bg-slate-950 border-slate-800'
+                      }`}
+                    >
+                      <div
+                        className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                        style={{
+                          backgroundColor: isActive ? '#6366F1' : 'transparent',
+                          borderColor: isActive ? '#6366F1' : '#4B5563',
+                        }}
+                      />
+                      <span className={isActive ? 'text-slate-100 font-bold' : 'text-slate-400'}>{opt.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -403,24 +411,38 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setImportMode('merge')}
-                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                  importMode === 'merge'
-                    ? 'border-indigo-500/60 bg-indigo-950/60 text-indigo-300'
-                    : 'border-slate-800 bg-slate-950 text-slate-400'
+                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  importMode === 'merge' ? 'bg-slate-950 border-indigo-500' : 'bg-slate-950 border-slate-800'
                 }`}
               >
-                Mesclar (manter existentes)
+                <div
+                  className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                  style={{
+                    backgroundColor: importMode === 'merge' ? '#6366F1' : 'transparent',
+                    borderColor: importMode === 'merge' ? '#6366F1' : '#4B5563',
+                  }}
+                />
+                <span className={importMode === 'merge' ? 'text-slate-100 font-bold' : 'text-slate-400'}>
+                  Mesclar (manter existentes)
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setImportMode('replace')}
-                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
-                  importMode === 'replace'
-                    ? 'border-red-500/60 bg-red-500/10 text-red-400'
-                    : 'border-slate-800 bg-slate-950 text-slate-400'
+                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  importMode === 'replace' ? 'bg-slate-950 border-red-500' : 'bg-slate-950 border-slate-800'
                 }`}
               >
-                Substituir (apaga o que existe)
+                <div
+                  className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                  style={{
+                    backgroundColor: importMode === 'replace' ? '#EF4444' : 'transparent',
+                    borderColor: importMode === 'replace' ? '#EF4444' : '#4B5563',
+                  }}
+                />
+                <span className={importMode === 'replace' ? 'text-slate-100 font-bold' : 'text-slate-400'}>
+                  Substituir (apaga o que existe)
+                </span>
               </button>
             </div>
 
