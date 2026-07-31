@@ -13,9 +13,18 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { VaultItem } from '../types';
-import { encryptVaultData, decryptVaultData, getRandomBytes, deriveMasterKey } from '../lib/crypto';
+import { encryptVaultData, decryptVaultData, getRandomBytes, deriveMasterKey, base64ToBuffer } from '../lib/crypto';
+import { loadEncryptedVaultItems, saveEncryptedVaultItems } from '../lib/storage';
 import { VAULTS } from '../lib/vaults';
-import { ExportScope, ScopedVaultItem, loadItemsForScope, stripScopeMetadata } from '../lib/backup';
+import {
+  ExportScope,
+  ExportedVaultItem,
+  ScopedVaultItem,
+  loadItemsForScope,
+  toExportedItems,
+  groupItemsByVault,
+  mergeItemsById,
+} from '../lib/backup';
 
 interface BackupExportModalProps {
   isOpen: boolean;
@@ -42,8 +51,10 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
   onImportItems,
 }) => {
   const [backupPassphrase, setBackupPassphrase] = useState('');
+  const [importPassphrase, setImportPassphrase] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
 
   const [exportScope, setExportScope] = useState<ExportScope>(activeVaultId);
   const [scopedItems, setScopedItems] = useState<ScopedVaultItem[]>([]);
@@ -67,12 +78,14 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, exportScope, masterKey, activeVaultId]);
+    // items is intentionally included: when the active vault's live items change
+    // (switching vaults, adding/importing items), the 'all' scope must recompute
+    // instead of keeping a stale snapshot tagged under the previous vault.
+  }, [isOpen, exportScope, masterKey, activeVaultId, items]);
 
   const itemsToExport = useMemo(() => {
     const chosen = selectionMode ? scopedItems.filter(i => selectedIds.has(i.id)) : scopedItems;
-    return stripScopeMetadata(chosen);
+    return toExportedItems(chosen);
   }, [scopedItems, selectionMode, selectedIds]);
 
   const toggleSelected = (id: string) => {
@@ -131,6 +144,43 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  // Splits the imported items back into their original vaults (Pessoal/Trabalho/
+  // Compartilhado) instead of dumping everything into whichever vault is active,
+  // and either merges with or replaces each vault's existing items per importMode.
+  const applyImportedItems = async (rawItems: ExportedVaultItem[]) => {
+    if (!masterKey || !salt) return;
+
+    if (
+      importMode === 'replace' &&
+      !confirm(
+        'ATENÇÃO: o modo "Substituir" vai apagar todos os itens já cadastrados em cada cofre afetado antes de importar o backup. Esta ação não pode ser desfeita. Deseja continuar?'
+      )
+    ) {
+      return;
+    }
+
+    const groups = groupItemsByVault(rawItems, activeVaultId);
+    let total = 0;
+    const summary: string[] = [];
+
+    for (const [vaultId, groupItems] of Object.entries(groups)) {
+      total += groupItems.length;
+      const vaultName = VAULTS.find(v => v.id === vaultId)?.name || vaultId;
+      summary.push(`${groupItems.length} em ${vaultName}`);
+
+      if (vaultId === activeVaultId) {
+        const finalList = importMode === 'replace' ? groupItems : mergeItemsById(items, groupItems);
+        onImportItems(finalList);
+      } else {
+        const base = importMode === 'replace' ? [] : await loadEncryptedVaultItems(masterKey, vaultId);
+        const finalList = importMode === 'replace' ? groupItems : mergeItemsById(base, groupItems);
+        await saveEncryptedVaultItems(finalList, masterKey, salt, vaultId);
+      }
+    }
+
+    setImportStatus(`Sucesso! ${total} itens restaurados (${summary.join(', ')}).`);
+  };
+
   // Handle Import File
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -146,26 +196,33 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
         const parsed = JSON.parse(text);
 
         // Check if encrypted payload or plaintext array
-        if (parsed.ciphertext && parsed.iv && masterKey) {
-          try {
-            let keyToUse = masterKey;
-            if (backupPassphrase.trim()) {
-              const fileSalt = new Uint8Array(atob(parsed.salt).split('').map(c => c.charCodeAt(0)));
-              keyToUse = await deriveMasterKey(backupPassphrase, fileSalt);
-            }
+        if (parsed.ciphertext && parsed.iv && parsed.salt) {
+          if (!importPassphrase.trim()) {
+            setImportError(
+              'Digite a senha do arquivo de backup antes de selecioná-lo. Use a Senha Mestra do dispositivo onde o backup foi criado, ou a Senha Personalizada de Backup, se você definiu uma na exportação.'
+            );
+            setImportStatus(null);
+            e.target.value = '';
+            return;
+          }
 
-            const decryptedItems = await decryptVaultData<VaultItem[]>(parsed, keyToUse);
-            if (Array.isArray(decryptedItems)) {
-              onImportItems(decryptedItems);
-              setImportStatus(`Sucesso! ${decryptedItems.length} itens importados e integrados ao cofre.`);
-            }
+          try {
+            // Always derive the key from the salt embedded in the file itself,
+            // never from the current device's live session key — the salt is
+            // unique per installation, so reusing the local masterKey would
+            // fail even when the master passwords match across devices.
+            const fileSalt = base64ToBuffer(parsed.salt);
+            const importKey = await deriveMasterKey(importPassphrase, fileSalt);
+
+            const decryptedItems = await decryptVaultData<ExportedVaultItem[]>(parsed, importKey);
+            await applyImportedItems(decryptedItems);
+            setImportPassphrase('');
           } catch (err) {
             setImportError('Falha ao descriptografar o backup. A senha de backup informada pode estar incorreta.');
             setImportStatus(null);
           }
         } else if (Array.isArray(parsed)) {
-          onImportItems(parsed);
-          setImportStatus(`Sucesso! ${parsed.length} registros em texto claro foram importados.`);
+          await applyImportedItems(parsed as ExportedVaultItem[]);
         } else {
           setImportError('Formato de arquivo não reconhecido.');
           setImportStatus(null);
@@ -328,13 +385,52 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
               </div>
             )}
 
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-300 block">Senha do Arquivo de Backup</label>
+              <input
+                type="password"
+                value={importPassphrase}
+                onChange={e => setImportPassphrase(e.target.value)}
+                placeholder="Senha Mestra de origem ou Senha Personalizada usada no export..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              />
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Se o backup foi criado em outro computador, digite a Senha Mestra <strong>de lá</strong> (não a deste dispositivo).
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setImportMode('merge')}
+                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
+                  importMode === 'merge'
+                    ? 'border-indigo-500/60 bg-indigo-950/60 text-indigo-300'
+                    : 'border-slate-800 bg-slate-950 text-slate-400'
+                }`}
+              >
+                Mesclar (manter existentes)
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode('replace')}
+                className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
+                  importMode === 'replace'
+                    ? 'border-red-500/60 bg-red-500/10 text-red-400'
+                    : 'border-slate-800 bg-slate-950 text-slate-400'
+                }`}
+              >
+                Substituir (apaga o que existe)
+              </button>
+            </div>
+
             <label className="p-6 bg-slate-950 hover:bg-slate-800/60 border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition text-center">
               <Upload className="w-6 h-6 text-indigo-400" />
               <span className="text-xs font-semibold text-slate-200">
                 Clique ou arraste um arquivo de backup (.vault / .json)
               </span>
               <span className="text-[11px] text-slate-500">
-                Se o arquivo for criptografado, preencha a senha no campo acima antes de selecionar.
+                Se o arquivo for criptografado, preencha a senha acima antes de selecionar.
               </span>
               <input
                 type="file"

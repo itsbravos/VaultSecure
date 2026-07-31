@@ -16,12 +16,13 @@ import {
   Cpu,
   Upload,
 } from 'lucide-react';
-import { AuthSession, VaultSettings, VaultItem } from '../types';
-import { verifyMasterPassword, initializeNewVault } from '../lib/storage';
+import { AuthSession, VaultSettings } from '../types';
+import { verifyMasterPassword, initializeNewVault, saveEncryptedVaultItems } from '../lib/storage';
 import { verifyTOTP, getTotpRemainingSeconds } from '../lib/totp';
 import { performCertSignatureChallenge, generateTestDigitalCert } from '../lib/pki';
 import { calculatePasswordStrength, deriveMasterKey, decryptVaultData, base64ToBuffer } from '../lib/crypto';
 import { getAccent } from '../lib/theme';
+import { ExportedVaultItem, groupItemsByVault } from '../lib/backup';
 
 interface LockScreenProps {
   session: AuthSession;
@@ -262,21 +263,32 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       const text = await restoreFile.text();
       const parsed = JSON.parse(text);
 
-      let restoredItems: VaultItem[];
+      let restoredItems: ExportedVaultItem[];
       if (parsed.ciphertext && parsed.iv && parsed.salt) {
         const fileSalt = base64ToBuffer(parsed.salt);
         const fileKey = await deriveMasterKey(restorePassword, fileSalt);
-        restoredItems = await decryptVaultData<VaultItem[]>(parsed, fileKey);
+        restoredItems = await decryptVaultData<ExportedVaultItem[]>(parsed, fileKey);
       } else if (Array.isArray(parsed)) {
         restoredItems = parsed;
       } else {
         throw new Error('Formato de arquivo não reconhecido.');
       }
 
+      // A backup exported with "Todos os Cofres" tags each item with the vault it
+      // came from — split it back out instead of dumping everything into Pessoal.
+      const groupedByVault = groupItemsByVault(restoredItems, 'pessoal');
+      const pessoalItems = groupedByVault['pessoal'] || [];
+
       const res = await initializeNewVault(
         restorePassword,
         { userName: initUserName.trim() || 'Seu Nome' },
-        restoredItems
+        pessoalItems
+      );
+
+      await Promise.all(
+        Object.entries(groupedByVault)
+          .filter(([vaultId]) => vaultId !== 'pessoal')
+          .map(([vaultId, groupItems]) => saveEncryptedVaultItems(groupItems, res.masterKey, res.salt, vaultId))
       );
 
       onSessionUpdate(prev => ({

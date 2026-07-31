@@ -396,23 +396,14 @@ export default function App() {
     showToast('Certificados digitais atualizados.');
   };
 
-  // Import Backup Items
-  const handleImportItems = async (newItems: VaultItem[]) => {
+  // Import Backup Items — the caller (BackupView/BackupExportModal) already
+  // resolved merge-vs-replace and vault routing, so this just persists the
+  // final list for the currently active vault.
+  const handleImportItems = async (finalItems: VaultItem[]) => {
     if (!session.masterKey || !session.salt) return;
-
-    // Merge by id or append
-    const existingIds = new Set(items.map(i => i.id));
-    const merged = [...items];
-
-    newItems.forEach(item => {
-      if (!existingIds.has(item.id)) {
-        merged.push(item);
-      }
-    });
-
-    setItems(merged);
-    await saveEncryptedVaultItems(merged, session.masterKey, session.salt);
-    showToast(`${newItems.length} registros integrados ao cofre.`);
+    setItems(finalItems);
+    await saveEncryptedVaultItems(finalItems, session.masterKey, session.salt, activeVaultId);
+    showToast(`Cofre atualizado: ${finalItems.length} itens no cofre atual.`);
   };
 
   // Computed Category Counts
@@ -657,14 +648,7 @@ export default function App() {
                   activeVaultId={activeVaultId}
                   masterKey={session.masterKey}
                   salt={session.salt}
-                  onImportItems={async importedItems => {
-                    setItems(importedItems);
-                    if (session.masterKey && session.salt) {
-                      await saveEncryptedVaultItems(importedItems, session.masterKey, session.salt);
-                    }
-                    setToastMessage(`${importedItems.length} registros restaurados!`);
-                    setTimeout(() => setToastMessage(null), 3000);
-                  }}
+                  onImportItems={handleImportItems}
                   settings={settings}
                 />
               </motion.div>
