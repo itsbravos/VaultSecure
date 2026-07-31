@@ -79,10 +79,11 @@ export function getStoredMasterSalt(): Uint8Array {
  */
 export async function initializeNewVault(
   masterPassword: string,
-  initialSettings: Partial<VaultSettings> = {}
+  initialSettings: Partial<VaultSettings> = {},
+  initialItems: VaultItem[] = []
 ): Promise<{ masterKey: CryptoKey; salt: Uint8Array }> {
   const salt = getRandomBytes(16);
-  
+
   // Store salt base64
   let binary = '';
   for (let i = 0; i < salt.length; i++) {
@@ -95,55 +96,6 @@ export async function initializeNewVault(
   // Store verifier token to quickly validate password on unlock without decrypting full database
   const verifierToken = await encryptVaultData({ check: 'VAULT_VERIFIED_OK' }, masterKey, salt);
   localStorage.setItem(STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(verifierToken));
-
-  // Default seed items for first time user
-  const initialItems: VaultItem[] = [
-    {
-      id: 'welcome-item-1',
-      title: 'Minha Conta de Email Principal',
-      category: 'login',
-      username: 'usuario@exemplo.com.br',
-      password: 'm9$Xk#2!pL9vQ1aZ',
-      url: 'https://mail.google.com',
-      notes: 'Senha do e-mail com autenticação de 2 fatores ativada.',
-      tags: ['Email', 'Pessoal', 'Prioritário'],
-      favorite: true,
-      customFields: [],
-      createdAt: Date.now() - 86400000 * 10,
-      updatedAt: Date.now() - 86400000 * 10,
-    },
-    {
-      id: 'welcome-item-2',
-      title: 'Cartão de Crédito Corporativo',
-      category: 'card',
-      cardHolder: 'USUARIO SILVA',
-      cardNumber: '4532 •••• •••• 8812',
-      cardExpiry: '11/28',
-      cardCvc: '892',
-      notes: 'Cartão da empresa para serviços em nuvem.',
-      tags: ['Finanças', 'Trabalho'],
-      favorite: true,
-      customFields: [
-        { id: 'f1', label: 'Limite', value: 'R$ 15.000', type: 'text' },
-      ],
-      createdAt: Date.now() - 86400000 * 5,
-      updatedAt: Date.now() - 86400000 * 5,
-    },
-    {
-      id: 'welcome-item-3',
-      title: 'Chave do Servidor SSH Prod',
-      category: 'api_key',
-      username: 'root',
-      password: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8...',
-      url: 'https://cloud.provedor.com',
-      notes: 'Acesso root ao servidor de produção.',
-      tags: ['Servidores', 'Infra'],
-      favorite: false,
-      customFields: [],
-      createdAt: Date.now() - 86400000 * 2,
-      updatedAt: Date.now() - 86400000 * 2,
-    },
-  ];
 
   const encryptedItems = await encryptVaultData(initialItems, masterKey, salt);
   localStorage.setItem(STORAGE_KEYS.VAULT_ENCRYPTED, JSON.stringify(encryptedItems));

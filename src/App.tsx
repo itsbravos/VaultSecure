@@ -165,7 +165,12 @@ export default function App() {
   }, [session.isUnlocked, session.lastActivity, settings.autoLockMinutes, handleLockVault]);
 
   // Unlock Vault Handler
-  const handleSuccessUnlock = async (masterKey: CryptoKey, salt: Uint8Array, isDuress = false) => {
+  const handleSuccessUnlock = async (
+    masterKey: CryptoKey,
+    salt: Uint8Array,
+    isDuress = false,
+    isFirstTimeSetup = false
+  ) => {
     try {
       if (isDuress) {
         setItems(DECOY_DURESS_ITEMS);
@@ -195,6 +200,9 @@ export default function App() {
       }));
       if (settings.autoLockMinutes > 0) {
         setAutoLockSecondsLeft(settings.autoLockMinutes * 60);
+      }
+      if (isFirstTimeSetup) {
+        setIsOnboardingOpen(true);
       }
       showToast('Cofre descriptografado com sucesso.');
     } catch (err: any) {
@@ -646,6 +654,7 @@ export default function App() {
               >
                 <BackupView
                   items={items}
+                  activeVaultId={activeVaultId}
                   masterKey={session.masterKey}
                   salt={session.salt}
                   onImportItems={async importedItems => {
@@ -792,6 +801,7 @@ export default function App() {
         isOpen={isBackupOpen}
         onClose={() => setIsBackupOpen(false)}
         items={items}
+        activeVaultId={activeVaultId}
         masterKey={session.masterKey}
         salt={session.salt}
         onImportItems={handleImportItems}

@@ -18,37 +18,11 @@ import {
   Sparkles,
   ChevronDown,
   Check,
-  Shield,
-  Briefcase,
-  Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ItemCategory, VaultSettings, SecurityReport } from '../types';
 import { getAccent, getTheme } from '../lib/theme';
-
-const VAULTS = [
-  {
-    id: 'pessoal',
-    name: 'Cofre Pessoal',
-    desc: 'Contas & senhas individuais',
-    icon: Shield,
-    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-  },
-  {
-    id: 'trabalho',
-    name: 'Cofre de Trabalho',
-    desc: 'Empresa & acessos corporativos',
-    icon: Briefcase,
-    color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-  },
-  {
-    id: 'compartilhado',
-    name: 'Cofre Compartilhado',
-    desc: 'Chaves & dados de equipe',
-    icon: Users,
-    color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
-  },
-];
+import { VAULTS } from '../lib/vaults';
 
 interface VaultSidebarProps {
   activeCategory: ItemCategory | 'all' | 'favorites';

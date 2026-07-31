@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Download,
   Upload,
@@ -10,6 +10,8 @@ import {
   FileJson,
   Sparkles,
   ArrowRight,
+  ListChecks,
+  Check,
 } from 'lucide-react';
 import { VaultItem, VaultSettings } from '../types';
 import {
@@ -19,17 +21,26 @@ import {
   deriveMasterKey,
 } from '../lib/crypto';
 import { getAccent, getTheme } from '../lib/theme';
+import { VAULTS } from '../lib/vaults';
+import { ExportScope, ScopedVaultItem, loadItemsForScope, stripScopeMetadata } from '../lib/backup';
 
 interface BackupViewProps {
   items: VaultItem[];
+  activeVaultId: string;
   masterKey: CryptoKey | null;
   salt: Uint8Array | null;
   onImportItems: (newItems: VaultItem[]) => void;
   settings?: VaultSettings;
 }
 
+const SCOPE_OPTIONS: { id: ExportScope; label: string }[] = [
+  ...VAULTS.map(v => ({ id: v.id as ExportScope, label: v.name })),
+  { id: 'all', label: 'Todos os Cofres' },
+];
+
 export const BackupView: React.FC<BackupViewProps> = ({
   items,
+  activeVaultId,
   masterKey,
   salt,
   onImportItems,
@@ -40,12 +51,52 @@ export const BackupView: React.FC<BackupViewProps> = ({
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
+  // Export scope: which vault(s) to pull items from, and an optional manual selection within them.
+  const [exportScope, setExportScope] = useState<ExportScope>(activeVaultId);
+  const [scopedItems, setScopedItems] = useState<ScopedVaultItem[]>([]);
+  const [isLoadingScope, setIsLoadingScope] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!masterKey) return;
+    let cancelled = false;
+    setIsLoadingScope(true);
+    loadItemsForScope(exportScope, masterKey, activeVaultId, items)
+      .then(loaded => {
+        if (cancelled) return;
+        setScopedItems(loaded);
+        setSelectedIds(new Set(loaded.map(i => i.id)));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingScope(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportScope, masterKey, activeVaultId]);
+
+  const itemsToExport = useMemo(() => {
+    const chosen = selectionMode ? scopedItems.filter(i => selectedIds.has(i.id)) : scopedItems;
+    return stripScopeMetadata(chosen);
+  }, [scopedItems, selectionMode, selectedIds]);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const accent = getAccent(settings?.accentColor);
   const theme = getTheme(settings?.theme);
 
   // Export Encrypted JSON file (.vault)
   const handleExportEncrypted = async () => {
-    if (!masterKey || !salt) return;
+    if (!masterKey || !salt || itemsToExport.length === 0) return;
 
     try {
       let exportKey = masterKey;
@@ -57,7 +108,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
       }
 
       const encryptedPayload = await encryptVaultData(
-        items,
+        itemsToExport,
         exportKey,
         exportSalt
       );
@@ -79,6 +130,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
   // Export Plaintext JSON file
   const handleExportPlaintext = () => {
+    if (itemsToExport.length === 0) return;
     if (
       !confirm(
         'ATENÇÃO: A exportação em texto claro não possui criptografia! Qualquer pessoa poderá ler suas senhas. Deseja continuar?'
@@ -87,7 +139,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
       return;
     }
 
-    const jsonString = JSON.stringify(items, null, 2);
+    const jsonString = JSON.stringify(itemsToExport, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -219,6 +271,80 @@ export const BackupView: React.FC<BackupViewProps> = ({
             Gera um arquivo <strong>.vault</strong> fortemente protegido com a sua Senha Mestra (ou uma senha personalizada de backup). Você pode transferir este arquivo com total segurança entre computadores e celulares.
           </p>
 
+          {/* Vault Scope Selector */}
+          <div className="space-y-2">
+            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono`}>
+              Cofre a Exportar
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {SCOPE_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setExportScope(opt.id)}
+                  className={`px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors text-left ${
+                    exportScope === opt.id
+                      ? `${accent.borderAccent} ${accent.badgeBg} ${accent.textAccent}`
+                      : `${theme.borderMain} ${theme.bgCardInner} ${theme.textMuted}`
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Manual Item Selection */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectionMode}
+                onChange={e => setSelectionMode(e.target.checked)}
+                className={`rounded border-slate-700 ${accent.textAccent} bg-slate-950 w-4 h-4`}
+              />
+              <span className={`flex items-center gap-1.5 font-mono ${theme.textSecondary}`}>
+                <ListChecks className={`w-3.5 h-3.5 ${accent.textAccent}`} />
+                Selecionar itens específicos (em vez de exportar todos do escopo)
+              </span>
+            </label>
+
+            {selectionMode && (
+              <div className={`max-h-56 overflow-y-auto rounded-xl border ${theme.borderMain} ${theme.bgCardInner} divide-y ${theme.borderInner}`}>
+                {isLoadingScope ? (
+                  <p className={`p-3 text-[11px] ${theme.textMuted} font-mono`}>Carregando itens do cofre...</p>
+                ) : scopedItems.length === 0 ? (
+                  <p className={`p-3 text-[11px] ${theme.textMuted} font-mono`}>Nenhum item neste escopo.</p>
+                ) : (
+                  scopedItems.map(item => (
+                    <label
+                      key={`${item.sourceVaultId}-${item.id}`}
+                      className="flex items-center gap-2.5 p-2.5 text-xs cursor-pointer hover:bg-black/10"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleSelected(item.id)}
+                        className={`rounded border-slate-700 ${accent.textAccent} bg-slate-950 w-4 h-4 shrink-0`}
+                      />
+                      <span className={`truncate ${theme.textPrimary}`}>{item.title}</span>
+                      {exportScope === 'all' && (
+                        <span className={`ml-auto shrink-0 text-[10px] font-mono ${theme.textMuted}`}>
+                          {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
+                        </span>
+                      )}
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+
+            <p className={`text-[11px] font-mono ${theme.textMuted} flex items-center gap-1.5`}>
+              <Check className={`w-3.5 h-3.5 ${accent.textAccent}`} />
+              {itemsToExport.length} {itemsToExport.length === 1 ? 'item será exportado' : 'itens serão exportados'}
+            </p>
+          </div>
+
           <div className="space-y-2">
             <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5 font-mono`}>
               <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Senha Personalizada de Backup (Opcional)
@@ -235,7 +361,8 @@ export const BackupView: React.FC<BackupViewProps> = ({
           <div className="space-y-3 pt-2">
             <button
               onClick={handleExportEncrypted}
-              className={`w-full py-3 ${accent.bgBtn} ${accent.bgBtnHover} text-white rounded-xl text-xs font-semibold shadow-lg transition-colors flex items-center justify-center gap-2`}
+              disabled={itemsToExport.length === 0}
+              className={`w-full py-3 ${accent.bgBtn} ${accent.bgBtnHover} disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg transition-colors flex items-center justify-center gap-2`}
             >
               <FileJson className="w-4 h-4" />
               <span>Baixar Arquivo Criptografado (.vault)</span>
@@ -243,7 +370,8 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
             <button
               onClick={handleExportPlaintext}
-              className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl text-xs font-semibold border border-red-500/30 transition-colors flex items-center justify-center gap-2 font-mono"
+              disabled={itemsToExport.length === 0}
+              className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-red-500 rounded-xl text-xs font-semibold border border-red-500/30 transition-colors flex items-center justify-center gap-2 font-mono"
             >
               <AlertTriangle className="w-4 h-4 text-red-500" />
               <span>Exportar em Texto Claro (Inseguro - JSON)</span>

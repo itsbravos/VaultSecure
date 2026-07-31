@@ -14,18 +14,19 @@ import {
   RefreshCw,
   CheckCircle2,
   Cpu,
+  Upload,
 } from 'lucide-react';
-import { AuthSession, VaultSettings } from '../types';
+import { AuthSession, VaultSettings, VaultItem } from '../types';
 import { verifyMasterPassword, initializeNewVault } from '../lib/storage';
 import { verifyTOTP, getTotpRemainingSeconds } from '../lib/totp';
 import { performCertSignatureChallenge, generateTestDigitalCert } from '../lib/pki';
-import { calculatePasswordStrength } from '../lib/crypto';
+import { calculatePasswordStrength, deriveMasterKey, decryptVaultData, base64ToBuffer } from '../lib/crypto';
 import { getAccent } from '../lib/theme';
 
 interface LockScreenProps {
   session: AuthSession;
   settings: VaultSettings;
-  onSuccessUnlock: (masterKey: CryptoKey, salt: Uint8Array, isDuress?: boolean) => void;
+  onSuccessUnlock: (masterKey: CryptoKey, salt: Uint8Array, isDuress?: boolean, isFirstTimeSetup?: boolean) => void;
   onSessionUpdate: (updater: (prev: AuthSession) => AuthSession) => void;
   onResetVault: () => void;
 }
@@ -47,11 +48,16 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Initialization Form State
+  const [initMode, setInitMode] = useState<'create' | 'restore'>('create');
   const [initUserName, setInitUserName] = useState('');
   const [initMasterPass, setInitMasterPass] = useState('');
   const [initConfirmPass, setInitConfirmPass] = useState('');
   const [enable2FAInInit, setEnable2FAInInit] = useState(false);
   const [enableCertInInit, setEnableCertInInit] = useState(false);
+
+  // Restore-from-file Form State
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePassword, setRestorePassword] = useState('');
 
   // Digital Cert Challenge state
   const [certChallengeStatus, setCertChallengeStatus] = useState<string>('Pendente de verificação');
@@ -228,9 +234,64 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         passedCert: true,
       }));
 
-      onSuccessUnlock(res.masterKey, res.salt);
+      onSuccessUnlock(res.masterKey, res.salt, false, true);
     } catch (err: any) {
       setErrorMsg('Erro ao criar o cofre criptografado.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Restore an existing .vault backup onto a fresh device instead of creating an empty vault —
+  // avoids redoing registration when the user already has an account elsewhere.
+  const handleRestoreSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restoreFile) {
+      setErrorMsg('Selecione um arquivo .vault para restaurar.');
+      return;
+    }
+    if (!restorePassword.trim()) {
+      setErrorMsg('Digite a Senha Mestra usada para criar o backup.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      const text = await restoreFile.text();
+      const parsed = JSON.parse(text);
+
+      let restoredItems: VaultItem[];
+      if (parsed.ciphertext && parsed.iv && parsed.salt) {
+        const fileSalt = base64ToBuffer(parsed.salt);
+        const fileKey = await deriveMasterKey(restorePassword, fileSalt);
+        restoredItems = await decryptVaultData<VaultItem[]>(parsed, fileKey);
+      } else if (Array.isArray(parsed)) {
+        restoredItems = parsed;
+      } else {
+        throw new Error('Formato de arquivo não reconhecido.');
+      }
+
+      const res = await initializeNewVault(
+        restorePassword,
+        { userName: initUserName.trim() || 'Seu Nome' },
+        restoredItems
+      );
+
+      onSessionUpdate(prev => ({
+        ...prev,
+        isVaultInitialized: true,
+        masterKey: res.masterKey,
+        salt: res.salt,
+        passedMasterPass: true,
+        passedTotp: true,
+        passedCert: true,
+      }));
+
+      onSuccessUnlock(res.masterKey, res.salt, false, false);
+    } catch (err: any) {
+      setErrorMsg('Falha ao restaurar o backup. Verifique se a Senha Mestra e o arquivo .vault selecionado estão corretos.');
     } finally {
       setIsLoading(false);
     }
@@ -352,6 +413,34 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
         {/* INITIALIZATION MODE (First Time Setup) */}
         {isInitializing ? (
+          <div className="space-y-4">
+            {/* Create vs Restore Mode Toggle */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800/50 rounded-xl border border-slate-700/50">
+              <button
+                type="button"
+                onClick={() => setInitMode('create')}
+                className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                  initMode === 'create'
+                    ? `${accent.bgBtn} text-white`
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Criar Novo Cofre
+              </button>
+              <button
+                type="button"
+                onClick={() => setInitMode('restore')}
+                className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                  initMode === 'restore'
+                    ? `${accent.bgBtn} text-white`
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" /> Restaurar de Arquivo .vault
+              </button>
+            </div>
+
+            {initMode === 'create' ? (
           <form onSubmit={handleInitVaultSubmit} className="space-y-4">
             <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 text-xs text-slate-300 space-y-1">
               <span className={`font-semibold ${accent.textAccent} flex items-center gap-1.5`}>
@@ -460,6 +549,86 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               )}
             </button>
           </form>
+            ) : (
+          <form onSubmit={handleRestoreSubmit} className="space-y-4 animate-fade-in">
+            <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 text-xs text-slate-300 space-y-1">
+              <span className={`font-semibold ${accent.textAccent} flex items-center gap-1.5`}>
+                <Upload className="w-4 h-4" /> Restaurar Cofre de Outro Dispositivo
+              </span>
+              <p className="text-slate-400 text-[11px]">
+                Selecione o arquivo <strong>.vault</strong> exportado em outro computador ou celular e digite a mesma Senha Mestra usada lá. Não é necessário criar um cadastro novo.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">Seu Nome (Titular do Cofre)</label>
+              <input
+                type="text"
+                value={initUserName}
+                onChange={e => setInitUserName(e.target.value)}
+                placeholder="Ex: Seu Nome ou Empresa"
+                className={`w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none ${accent.ringAccent} focus:ring-1 transition`}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">Arquivo de Backup (.vault)</label>
+              <label className="flex flex-col items-center justify-center gap-1.5 p-5 bg-slate-950 border-2 border-dashed border-slate-700/80 rounded-xl cursor-pointer hover:border-slate-500 transition text-center">
+                <Upload className={`w-5 h-5 ${accent.textAccent}`} />
+                <span className="text-xs text-slate-300 font-medium px-2 truncate max-w-full">
+                  {restoreFile ? restoreFile.name : 'Clique para selecionar o arquivo .vault'}
+                </span>
+                <input
+                  type="file"
+                  accept=".vault,.json"
+                  className="hidden"
+                  onChange={e => setRestoreFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">Senha Mestra do Backup</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={restorePassword}
+                  onChange={e => setRestorePassword(e.target.value)}
+                  placeholder="A mesma senha usada no dispositivo original"
+                  className={`w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none ${accent.ringAccent} focus:ring-1 transition`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Se você definiu uma Senha Personalizada de Backup ao exportar, use ela em vez da Senha Mestra.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full py-3 ${accent.bgBtn} ${accent.bgBtnHover} text-white font-medium text-sm rounded-xl ${accent.shadowAccent} flex items-center justify-center gap-2 transition active:scale-[0.98]`}
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Restaurando Cofre...
+                </>
+              ) : (
+                <>
+                  Restaurar e Acessar Cofre <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+            )}
+          </div>
         ) : (
           /* STEP-BY-STEP UNLOCKING */
           <div className="space-y-5">
