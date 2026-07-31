@@ -295,18 +295,23 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
 
             {/* Manual Item Selection */}
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectionMode}
-                  onChange={e => setSelectionMode(e.target.checked)}
-                  className="rounded border-slate-700 text-indigo-500 bg-slate-950 w-4 h-4"
+              <button
+                type="button"
+                onClick={() => setSelectionMode(!selectionMode)}
+                className="w-full flex items-center gap-2.5 text-xs cursor-pointer select-none text-left"
+              >
+                <div
+                  className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                  style={{
+                    backgroundColor: selectionMode ? '#6366F1' : 'transparent',
+                    borderColor: selectionMode ? '#6366F1' : '#4B5563',
+                  }}
                 />
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 text-slate-300">
                   <ListChecks className="w-3.5 h-3.5 text-indigo-400" />
                   Selecionar itens específicos
                 </span>
-              </label>
+              </button>
 
               {selectionMode && (
                 <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 divide-y divide-slate-800">
@@ -315,25 +320,31 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
                   ) : scopedItems.length === 0 ? (
                     <p className="p-3 text-[11px] text-slate-500 font-mono">Nenhum item neste escopo.</p>
                   ) : (
-                    scopedItems.map(item => (
-                      <label
-                        key={`${item.sourceVaultId}-${item.id}`}
-                        className="flex items-center gap-2.5 p-2.5 text-xs cursor-pointer hover:bg-slate-900"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(item.id)}
-                          onChange={() => toggleSelected(item.id)}
-                          className="rounded border-slate-700 text-indigo-500 bg-slate-950 w-4 h-4 shrink-0"
-                        />
-                        <span className="truncate text-slate-200">{item.title}</span>
-                        {exportScope === 'all' && (
-                          <span className="ml-auto shrink-0 text-[10px] font-mono text-slate-500">
-                            {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
-                          </span>
-                        )}
-                      </label>
-                    ))
+                    scopedItems.map(item => {
+                      const isChecked = selectedIds.has(item.id);
+                      return (
+                        <button
+                          type="button"
+                          key={`${item.sourceVaultId}-${item.id}`}
+                          onClick={() => toggleSelected(item.id)}
+                          className="w-full flex items-center gap-2.5 p-2.5 text-xs cursor-pointer hover:bg-slate-900 text-left"
+                        >
+                          <div
+                            className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                            style={{
+                              backgroundColor: isChecked ? '#6366F1' : 'transparent',
+                              borderColor: isChecked ? '#6366F1' : '#4B5563',
+                            }}
+                          />
+                          <span className="truncate text-slate-200">{item.title}</span>
+                          {exportScope === 'all' && (
+                            <span className="ml-auto shrink-0 text-[10px] font-mono text-slate-500">
+                              {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               )}

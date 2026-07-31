@@ -340,18 +340,23 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
           {/* Manual Item Selection */}
           <div className="space-y-2">
-            <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selectionMode}
-                onChange={e => setSelectionMode(e.target.checked)}
-                className={`rounded border-slate-700 ${accent.textAccent} bg-slate-950 w-4 h-4`}
+            <button
+              type="button"
+              onClick={() => setSelectionMode(!selectionMode)}
+              className="w-full flex items-center gap-2.5 text-xs cursor-pointer select-none text-left"
+            >
+              <div
+                className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                style={{
+                  backgroundColor: selectionMode ? accent.colorHex : 'transparent',
+                  borderColor: selectionMode ? accent.colorHex : theme.isLight ? '#9CA3AF' : '#4B5563',
+                }}
               />
               <span className={`flex items-center gap-1.5 font-mono ${theme.textSecondary}`}>
                 <ListChecks className={`w-3.5 h-3.5 ${accent.textAccent}`} />
                 Selecionar itens específicos (em vez de exportar todos do escopo)
               </span>
-            </label>
+            </button>
 
             {selectionMode && (
               <div className={`max-h-56 overflow-y-auto rounded-xl border ${theme.borderMain} ${theme.bgCardInner} divide-y ${theme.borderInner}`}>
@@ -360,25 +365,31 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 ) : scopedItems.length === 0 ? (
                   <p className={`p-3 text-[11px] ${theme.textMuted} font-mono`}>Nenhum item neste escopo.</p>
                 ) : (
-                  scopedItems.map(item => (
-                    <label
-                      key={`${item.sourceVaultId}-${item.id}`}
-                      className="flex items-center gap-2.5 p-2.5 text-xs cursor-pointer hover:bg-black/10"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(item.id)}
-                        onChange={() => toggleSelected(item.id)}
-                        className={`rounded border-slate-700 ${accent.textAccent} bg-slate-950 w-4 h-4 shrink-0`}
-                      />
-                      <span className={`truncate ${theme.textPrimary}`}>{item.title}</span>
-                      {exportScope === 'all' && (
-                        <span className={`ml-auto shrink-0 text-[10px] font-mono ${theme.textMuted}`}>
-                          {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
-                        </span>
-                      )}
-                    </label>
-                  ))
+                  scopedItems.map(item => {
+                    const isChecked = selectedIds.has(item.id);
+                    return (
+                      <button
+                        type="button"
+                        key={`${item.sourceVaultId}-${item.id}`}
+                        onClick={() => toggleSelected(item.id)}
+                        className="w-full flex items-center gap-2.5 p-2.5 text-xs cursor-pointer hover:bg-black/10 text-left"
+                      >
+                        <div
+                          className="w-4 h-4 rounded-sm border transition-all shrink-0"
+                          style={{
+                            backgroundColor: isChecked ? accent.colorHex : 'transparent',
+                            borderColor: isChecked ? accent.colorHex : theme.isLight ? '#9CA3AF' : '#4B5563',
+                          }}
+                        />
+                        <span className={`truncate ${theme.textPrimary}`}>{item.title}</span>
+                        {exportScope === 'all' && (
+                          <span className={`ml-auto shrink-0 text-[10px] font-mono ${theme.textMuted}`}>
+                            {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             )}
