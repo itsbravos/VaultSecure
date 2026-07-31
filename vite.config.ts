@@ -7,7 +7,13 @@ import {VitePWA} from 'vite-plugin-pwa';
 export default defineConfig(() => {
   // GitHub Pages serves this repo under /VaultSecure/, not the domain root, so
   // every asset URL and the PWA manifest's start_url/scope must share that base.
-  const base = process.env.GITHUB_PAGES === 'true' ? '/VaultSecure/' : '/';
+  // Electron loads the build via file://, which has no concept of a domain root,
+  // so asset URLs there must be relative ('./') instead of absolute.
+  const base = process.env.GITHUB_PAGES === 'true'
+    ? '/VaultSecure/'
+    : process.env.ELECTRON === 'true'
+      ? './'
+      : '/';
 
   return {
     base,

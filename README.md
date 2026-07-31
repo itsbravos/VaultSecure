@@ -49,6 +49,28 @@ Para rodar o VaultSecure no seu computador localmente a partir deste repositóri
 
 ---
 
+## 🖥️ App Desktop Nativo (Electron)
+
+Além do PWA, o repositório também gera um instalador desktop nativo de verdade (`.exe` / `.AppImage` / `.dmg`), que roda sem depender do navegador nem de nenhum servidor em segundo plano — o build fica todo empacotado dentro do próprio executável.
+
+### Rodar em modo desenvolvimento (janela Electron + hot-reload do Vite)
+```bash
+npm run electron:dev
+```
+
+### Gerar o instalador de produção
+```bash
+npm run electron:build          # gera para o SO atual
+npm run electron:build:win      # instalador Windows (.exe via NSIS)
+npm run electron:build:mac      # instalador macOS (.dmg)
+npm run electron:build:linux    # AppImage Linux
+```
+Os arquivos gerados ficam na pasta `release/`. Basta distribuir/instalar esse arquivo — a partir daí o app abre direto, sem terminal e sem servidor.
+
+> O código React/Vite é o mesmo usado no PWA e no site; o Electron só adiciona uma janela nativa (`electron/main.cjs`) que carrega o build já pronto (`dist/index.html`) via `file://`.
+
+---
+
 ## 📱 Como Instalar no Celular Android (A partir do Repositório GitHub)
 
 Como o projeto é hospedado diretamente no **GitHub sem um site de terceiros**, você tem 3 opções simples e 100% gratuitas para instalar o VaultSecure no seu celular Android:
