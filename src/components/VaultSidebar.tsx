@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Key,
   CreditCard,
@@ -18,6 +18,7 @@ import {
   Sparkles,
   ChevronDown,
   Check,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ItemCategory, VaultSettings, SecurityReport } from '../types';
@@ -37,6 +38,8 @@ interface VaultSidebarProps {
   activeVaultId?: string;
   onChangeVault?: (vaultId: string) => void;
   onOpenOnboarding?: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const VaultSidebar: React.FC<VaultSidebarProps> = ({
@@ -52,9 +55,26 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
   activeVaultId = 'pessoal',
   onChangeVault,
   onOpenOnboarding,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isVaultMenuOpen, setIsVaultMenuOpen] = useState(false);
+
+  // Below the lg breakpoint the sidebar becomes an off-canvas drawer instead
+  // of a collapsible column, so the icon-only "collapsed" mode only applies
+  // on desktop — a mobile drawer that's open should always show full labels.
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+  const effectiveCollapsed = isDesktop && isCollapsed;
+
+  // Closes the mobile drawer after a navigation action; harmless no-op on desktop.
+  const closeMobileAfterAction = () => onCloseMobile?.();
 
   const theme = getTheme(settings?.theme);
   const accent = getAccent(settings?.accentColor, theme.isLight);
@@ -117,30 +137,51 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
   const inactiveItemStyle = `${theme.textMuted} ${theme.hoverBg} hover:${theme.textPrimary}`;
 
   return (
-    <motion.aside
-      layout
-      transition={{ duration: 0.25, ease: 'easeInOut' }}
-      className={`border-r ${theme.borderMain} flex flex-col p-3 gap-3 ${theme.bgSidebar} shrink-0 justify-between h-full max-h-screen overflow-y-auto custom-scrollbar transition-all duration-300 ${
-        isCollapsed ? 'w-16 lg:w-20' : 'w-full lg:w-64'
-      }`}
-    >
+    <>
+      {/* Mobile Backdrop — closes the drawer on outside tap, only exists below lg */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={onCloseMobile}
+        />
+      )}
+
+      <motion.aside
+        layout
+        transition={{ duration: 0.25, ease: 'easeInOut' }}
+        className={`border-r ${theme.borderMain} flex flex-col p-3 gap-3 ${theme.bgSidebar} shrink-0 justify-between overflow-y-auto custom-scrollbar
+          fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-300
+          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:static lg:z-auto lg:h-full lg:max-h-screen lg:translate-x-0 lg:transition-all lg:max-w-none
+          ${effectiveCollapsed ? 'lg:w-20' : 'lg:w-64'}
+        `}
+      >
       {/* Upper Section */}
       <div className="space-y-3">
-        
+
         {/* Sleek Sidebar Toggle Header */}
         <div className={`flex items-center justify-between pb-1 border-b ${theme.borderInner}`}>
-          {!isCollapsed ? (
+          {!effectiveCollapsed ? (
             <div className="flex items-center justify-between w-full">
               <span className={`text-[10px] font-mono font-bold uppercase ${theme.textMuted} tracking-wider`}>
                 Menu Principal
               </span>
-              <button
-                onClick={() => setIsCollapsed(true)}
-                className={`p-1.5 rounded-lg ${theme.hoverBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer`}
-                title="Recolher Menu Lateral"
-              >
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsCollapsed(true)}
+                  className={`hidden lg:flex p-1.5 rounded-lg ${theme.hoverBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer`}
+                  title="Recolher Menu Lateral"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={onCloseMobile}
+                  className={`lg:hidden p-1.5 rounded-lg ${theme.hoverBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer`}
+                  title="Fechar Menu"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ) : (
             <button
@@ -154,7 +195,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
         </div>
 
         {/* MULTI-VAULT SELECTOR & ONBOARDING */}
-        {!isCollapsed && (
+        {!effectiveCollapsed && (
           <div className="space-y-2">
             {/* Vault Switcher Custom Dropdown */}
             <div className="relative font-mono z-20">
@@ -206,6 +247,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
                             onClick={() => {
                               onChangeVault?.(v.id);
                               setIsVaultMenuOpen(false);
+                              closeMobileAfterAction();
                             }}
                             className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${
                               isSelected
@@ -264,25 +306,26 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
               if (onOpenAddItemModal) {
                 onOpenAddItemModal();
               }
+              closeMobileAfterAction();
             }}
             className={`w-full ${accent.bgBtn} ${accent.bgBtnHover} text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${accent.shadowAccent} text-xs cursor-pointer`}
             title="Nova Credencial"
           >
             <Plus className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>Nova Credencial</span>}
+            {!effectiveCollapsed && <span>Nova Credencial</span>}
           </button>
         </motion.div>
 
         {/* DASHBOARD DE SEGURANÇA */}
         <div className={`pt-2 border-t ${theme.borderInner}`}>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <p className={`px-2 text-[10px] uppercase font-bold ${theme.textMuted} tracking-wider mb-1 font-mono`}>
               Dashboard
             </p>
           )}
 
           <button
-            onClick={() => onSelectView('audit')}
+            onClick={() => { onSelectView('audit'); closeMobileAfterAction(); }}
             className={`w-full relative flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
               activeView === 'audit' ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
             }`}
@@ -290,9 +333,9 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
           >
             <div className="relative z-10 flex items-center gap-2.5 mx-auto lg:mx-0">
               <PieChart className={`w-4 h-4 shrink-0 ${accent.textAccent}`} />
-              {!isCollapsed && <span>Dashboard de Saúde</span>}
+              {!effectiveCollapsed && <span>Dashboard de Saúde</span>}
             </div>
-            {!isCollapsed && (
+            {!effectiveCollapsed && (
               <span className={`relative z-10 text-[10px] font-mono font-bold ${accent.badgeText} ${accent.badgeBg} px-1.5 py-0.5 rounded border ${accent.borderAccent}`}>
                 {securityReport.score}%
               </span>
@@ -302,7 +345,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
 
         {/* Categories Navigation */}
         <div className={`space-y-0.5 pt-2 border-t ${theme.borderInner}`}>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <div className="flex items-center justify-between px-2 mb-1">
               <p className={`text-[10px] uppercase font-bold ${theme.textMuted} tracking-wider font-mono`}>
                 Categorias
@@ -329,6 +372,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
                 onClick={() => {
                   onSelectView('items');
                   onSelectCategory(cat.id as any);
+                  closeMobileAfterAction();
                 }}
                 className={`w-full relative flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                   isSelected ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
@@ -337,9 +381,9 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
               >
                 <div className="relative z-10 flex items-center gap-2.5 mx-auto lg:mx-0">
                   <Icon className={`w-4 h-4 shrink-0 ${cat.color || (isSelected ? accent.textAccent : theme.textMuted)}`} />
-                  {!isCollapsed && <span>{cat.label}</span>}
+                  {!effectiveCollapsed && <span>{cat.label}</span>}
                 </div>
-                {!isCollapsed && (
+                {!effectiveCollapsed && (
                   <span
                     className={`relative z-10 text-[10px] font-mono px-2 py-0.5 rounded-full ${
                       isSelected
@@ -357,7 +401,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
 
         {/* Tools Section */}
         <div className={`space-y-0.5 pt-2 border-t ${theme.borderInner}`}>
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <p className={`px-2 text-[10px] uppercase font-bold ${theme.textMuted} tracking-wider mb-1 font-mono`}>
               Ferramentas
             </p>
@@ -365,19 +409,19 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
 
           {/* Generator */}
           <button
-            onClick={() => onSelectView('generator')}
+            onClick={() => { onSelectView('generator'); closeMobileAfterAction(); }}
             className={`w-full relative flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
               activeView === 'generator' ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
             }`}
             title="Gerador de Senhas"
           >
             <Sparkles className={`relative z-10 w-4 h-4 ${activeView === 'generator' ? accent.textAccent : theme.textMuted} shrink-0 mx-auto lg:mx-0`} />
-            {!isCollapsed && <span className="relative z-10">Gerador de Senhas</span>}
+            {!effectiveCollapsed && <span className="relative z-10">Gerador de Senhas</span>}
           </button>
 
           {/* Digital Certificates */}
           <button
-            onClick={() => onSelectView('certificates')}
+            onClick={() => { onSelectView('certificates'); closeMobileAfterAction(); }}
             className={`w-full relative flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
               activeView === 'certificates' ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
             }`}
@@ -385,35 +429,35 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
           >
             <div className="relative z-10 flex items-center gap-2.5 mx-auto lg:mx-0">
               <FileCheck className={`w-4 h-4 ${activeView === 'certificates' ? accent.textAccent : theme.textMuted} shrink-0`} />
-              {!isCollapsed && <span>Certificados PKI</span>}
+              {!effectiveCollapsed && <span>Certificados PKI</span>}
             </div>
-            {!isCollapsed && settings.digitalCertificates && settings.digitalCertificates.length > 0 && (
+            {!effectiveCollapsed && settings.digitalCertificates && settings.digitalCertificates.length > 0 && (
               <span className="relative z-10 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
             )}
           </button>
 
           {/* Backup */}
           <button
-            onClick={() => onSelectView('backup')}
+            onClick={() => { onSelectView('backup'); closeMobileAfterAction(); }}
             className={`w-full relative flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
               activeView === 'backup' ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
             }`}
             title="Backup e Exportação"
           >
             <Download className={`relative z-10 w-4 h-4 ${activeView === 'backup' ? accent.textAccent : theme.textMuted} shrink-0 mx-auto lg:mx-0`} />
-            {!isCollapsed && <span className="relative z-10">Backup e Exportação</span>}
+            {!effectiveCollapsed && <span className="relative z-10">Backup e Exportação</span>}
           </button>
 
           {/* Settings */}
           <button
-            onClick={() => onSelectView('settings')}
+            onClick={() => { onSelectView('settings'); closeMobileAfterAction(); }}
             className={`w-full relative flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
               activeView === 'settings' ? activeItemStyle : `${inactiveItemStyle} border border-transparent`
             }`}
             title="Configurações"
           >
             <Settings className={`relative z-10 w-4 h-4 ${activeView === 'settings' ? accent.textAccent : theme.textMuted} shrink-0 mx-auto lg:mx-0`} />
-            {!isCollapsed && <span className="relative z-10">Configurações</span>}
+            {!effectiveCollapsed && <span className="relative z-10">Configurações</span>}
           </button>
         </div>
 
@@ -421,7 +465,7 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
 
       {/* Storage Progress Widget - Always visible & nicely styled */}
       <motion.div layout className={`pt-2 border-t ${theme.borderInner}`}>
-        {!isCollapsed ? (
+        {!effectiveCollapsed ? (
           <div className={`p-3 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-1.5 font-mono shadow-sm`}>
             <div className="flex justify-between items-center text-[10px] uppercase font-bold">
               <span className={theme.textMuted}>Memória Local</span>
@@ -452,7 +496,8 @@ export const VaultSidebar: React.FC<VaultSidebarProps> = ({
         )}
       </motion.div>
 
-    </motion.aside>
+      </motion.aside>
+    </>
   );
 };
 

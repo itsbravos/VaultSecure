@@ -6,6 +6,7 @@ import {
   Plus,
   Sparkles,
   Monitor,
+  Menu,
 } from 'lucide-react';
 import { VaultSettings, SecurityReport } from '../types';
 import { getTheme, getAccent } from '../lib/theme';
@@ -22,6 +23,7 @@ interface VaultHeaderProps {
   itemCount: number;
   onOpenAutoFillModal?: () => void;
   activeVaultId?: string;
+  onOpenMobileMenu?: () => void;
 }
 
 export const VaultHeader: React.FC<VaultHeaderProps> = ({
@@ -33,6 +35,7 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
   settings,
   onOpenAutoFillModal,
   activeVaultId = 'pessoal',
+  onOpenMobileMenu,
 }) => {
   const theme = getTheme(settings.theme);
   const accent = getAccent(settings.accentColor, theme.isLight);
@@ -51,19 +54,28 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
   const vaultBadge = getVaultBadge();
 
   return (
-    <header className={`h-16 border-b ${theme.borderMain} px-4 lg:px-6 flex items-center justify-between ${theme.bgHeader} shrink-0 z-30 transition-colors`}>
-      <div className="flex items-center gap-3">
+    <header className={`h-16 border-b ${theme.borderMain} px-3 sm:px-4 lg:px-6 flex items-center justify-between ${theme.bgHeader} shrink-0 z-30 transition-colors`}>
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Mobile Menu Toggle — opens the off-canvas sidebar drawer */}
+        <button
+          onClick={onOpenMobileMenu}
+          className={`lg:hidden p-2 -ml-1 rounded-lg ${theme.hoverBg} ${theme.textSecondary} shrink-0`}
+          title="Abrir menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
         <div className={`w-9 h-9 ${accent.bgBtn} rounded-xl flex items-center justify-center text-white ${accent.shadowAccent} shrink-0 transition-all`}>
           <ShieldCheck className="w-5 h-5" />
         </div>
-        <div className="flex items-center gap-2">
-          <h1 className={`text-base sm:text-lg font-bold tracking-tight ${theme.textPrimary} flex items-center gap-2`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <h1 className={`text-base sm:text-lg font-bold tracking-tight ${theme.textPrimary} flex items-center gap-2 truncate`}>
             <span>VaultSecure</span>
-            <span className={`${theme.textMuted} font-normal text-xs font-mono hidden sm:inline`}>v4.2</span>
+            <span className={`${theme.textMuted} font-normal text-xs font-mono hidden lg:inline`}>v4.2</span>
           </h1>
 
           {/* Active Vault Header Indicator */}
-          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${vaultBadge.color} shadow-xs`}>
+          <span className={`hidden lg:inline px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${vaultBadge.color} shadow-xs shrink-0`}>
             {vaultBadge.label}
           </span>
         </div>
@@ -72,7 +84,7 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
       {/* Right User & Badges Controls */}
       <div className="flex items-center gap-3 lg:gap-5">
         {/* MFA Verified Pill */}
-        <div className={`hidden sm:flex items-center gap-2 px-3 py-1 ${accent.badgeBg} border ${accent.borderAccent} rounded-full`}>
+        <div className={`hidden lg:flex items-center gap-2 px-3 py-1 ${accent.badgeBg} border ${accent.borderAccent} rounded-full`}>
           <div className={`w-2 h-2 ${accent.bgBtn} rounded-full animate-pulse`} />
           <span className={`text-[11px] font-semibold ${accent.badgeText} uppercase tracking-wider font-mono`}>
             {settings.require2FA ? 'MFA Verified' : 'AES-256 Encrypted'}
@@ -82,17 +94,17 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
         {/* New Item Button */}
         <button
           onClick={onOpenAddItemModal}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg ${accent.bgBtn} ${accent.bgBtnHover} text-xs font-semibold text-white transition-all ${accent.shadowAccent}`}
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg ${accent.bgBtn} ${accent.bgBtnHover} text-xs font-semibold text-white transition-all ${accent.shadowAccent} shrink-0 whitespace-nowrap`}
           title="Nova Credencial"
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Nova Credencial</span>
+          <Plus className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden sm:inline">Nova Credencial</span>
         </button>
 
         {/* Quick Password Generator */}
         <button
           onClick={onOpenGeneratorModal}
-          className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${theme.bgCardInner} ${theme.hoverBg} ${theme.textSecondary} border ${theme.borderMain} transition-colors text-xs font-medium`}
+          className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${theme.bgCardInner} ${theme.hoverBg} ${theme.textSecondary} border ${theme.borderMain} transition-colors text-xs font-medium whitespace-nowrap shrink-0`}
           title="Gerar Senha Aleatória"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -103,7 +115,7 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
         {onOpenAutoFillModal && (
           <button
             onClick={onOpenAutoFillModal}
-            className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-colors text-xs font-medium font-mono`}
+            className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-colors text-xs font-medium font-mono whitespace-nowrap shrink-0`}
             title="Assistente de Auto-Preenchimento no Navegador"
           >
             <Monitor className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
@@ -114,7 +126,7 @@ export const VaultHeader: React.FC<VaultHeaderProps> = ({
         {/* Lock Action Button */}
         <button
           onClick={onLockVault}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${theme.bgCardInner} hover:bg-red-500/10 hover:border-red-500/50 ${theme.textSecondary} hover:text-red-500 border ${theme.borderMain} transition-colors text-xs font-medium`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${theme.bgCardInner} hover:bg-red-500/10 hover:border-red-500/50 ${theme.textSecondary} hover:text-red-500 border ${theme.borderMain} transition-colors text-xs font-medium whitespace-nowrap shrink-0`}
           title="Bloquear Cofre"
         >
           <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} />

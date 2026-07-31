@@ -88,6 +88,7 @@ export default function App() {
   const [isChangeMasterPassModalOpen, setIsChangeMasterPassModalOpen] = useState(false);
   const [activeVaultId, setActiveVaultId] = useState<string>('pessoal');
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Toast / Clipboard Notification State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -512,6 +513,7 @@ export default function App() {
         itemCount={items.length}
         onOpenAutoFillModal={() => setIsAutoFillModalOpen(true)}
         activeVaultId={activeVaultId}
+        onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
       />
 
       {/* Main Body */}
@@ -534,6 +536,8 @@ export default function App() {
           activeVaultId={activeVaultId}
           onChangeVault={handleChangeVault}
           onOpenOnboarding={() => setIsOnboardingOpen(true)}
+          isMobileOpen={isMobileSidebarOpen}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
 
         {/* Main View Area */}
