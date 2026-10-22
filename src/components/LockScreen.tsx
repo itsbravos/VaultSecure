@@ -899,6 +899,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             <Cpu className="w-3.5 h-3.5 shrink-0" />
             <span className="whitespace-nowrap">{tr("Criptografado neste dispositivo (AES-256)")}</span>
           </div>
+          <a
+            href="https://github.com/itsbravos/VaultSecure"
+            target="_blank"
+            rel="noreferrer"
+            className={`text-center ${L.hoverText} transition`}
+          >
+            {tr("Projeto open source, sem auditoria de segurança independente")}
+          </a>
 
           <div className={`flex items-center gap-3 ${L.muted}`}>
             {onChangeLanguage && (

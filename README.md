@@ -12,6 +12,11 @@
 
 **[English](#english)** · **[Português](#português)**
 
+> ⚠️ **Personal open-source project. It has not had an independent security audit.** Use it to learn, test and give feedback; for your most critical passwords, keep a backup somewhere else as well.
+> **Projeto pessoal e open source, sem auditoria de segurança independente.** Use para conhecer, testar e dar feedback; para as senhas mais críticas, mantenha também um backup em outro lugar.
+
+**Try it / Teste:** https://itsbravos.github.io/VaultSecure/ · **Desktop installers / Instaladores:** [Releases](https://github.com/itsbravos/VaultSecure/releases/latest)
+
 ---
 
 ## English
@@ -51,6 +56,8 @@ The first screen lets you **create a vault** or **restore a backup** from anothe
 
 #### Install it as an app
 
+- **Download:** ready-made installers for Windows, macOS and Linux are on the [Releases page](https://github.com/itsbravos/VaultSecure/releases/latest). They are not code-signed yet, so Windows and macOS show a warning the first time.
+- **Android:** open https://itsbravos.github.io/VaultSecure/ in **Chrome**, tap **⋮ › Install app**. It works offline, but the vault lives in Chrome's storage for that site: **clearing Chrome's data or uninstalling the app deletes it**, and folder sync isn't available on phones. Export an encrypted backup from time to time.
 - **PWA (Windows, macOS, Linux, Android):** build and preview, then use the install icon in Chrome or Edge's address bar.
   ```bash
   npm run build
@@ -132,6 +139,8 @@ A primeira tela permite **criar um cofre** ou **restaurar um backup** de outro a
 
 #### Instalar como aplicativo
 
+- **Download:** instaladores prontos para Windows, macOS e Linux estão na [página de Releases](https://github.com/itsbravos/VaultSecure/releases/latest). Eles ainda não são assinados digitalmente, então o Windows e o macOS mostram um alerta na primeira vez.
+- **Android:** abra https://itsbravos.github.io/VaultSecure/ no **Chrome** e toque em **⋮ › Instalar app**. Funciona offline, mas o cofre fica no armazenamento do Chrome para esse site: **limpar os dados do Chrome ou desinstalar o app apaga o cofre**, e a sincronização por pasta não existe no celular. Exporte um backup criptografado de vez em quando.
 - **PWA (Windows, macOS, Linux, Android):** gere o build e rode o preview; depois use o ícone de instalar na barra de endereço do Chrome ou do Edge.
   ```bash
   npm run build

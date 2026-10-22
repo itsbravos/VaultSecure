@@ -912,4 +912,8 @@ export const EN: Record<string, string> = {
   "Usar o app autenticador": "Use the authenticator app",
   "Perdeu o celular? Usar código de emergência": "Lost your phone? Use an emergency code",
   "Por segurança, a senha de coação precisa ser definida de novo.": "For security, the duress password needs to be set again.",
+  "Este navegador pode apagar os dados do site. Exporte um backup de vez em quando.": "This browser may clear the site's data. Export a backup from time to time.",
+  "No celular, o cofre existe só neste navegador:": "On a phone, the vault only exists in this browser:",
+  "limpar os dados do Chrome ou desinstalar o app apaga tudo. Baixe um backup criptografado de vez em quando.": "clearing Chrome's data or uninstalling the app erases everything. Download an encrypted backup from time to time.",
+  "Projeto open source, sem auditoria de segurança independente": "Open-source project, not independently security-audited",
 };

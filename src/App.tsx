@@ -21,7 +21,9 @@ import {
   activateSettingsKey,
   deactivateSettingsKey,
   loadFailedAttempts,
+  requestPersistentStorage,
 } from './lib/storage';
+import { isFolderSyncSupported } from './lib/syncFolder';
 import { setLegacySyncKey } from './lib/syncEngine';
 
 import { LockScreen } from './components/LockScreen';
@@ -317,6 +319,12 @@ export default function App() {
         setAutoLockSecondsLeft(settings.autoLockMinutes * 60);
       }
       showToast(duressNeedsReset ? tr("Por segurança, a senha de coação precisa ser definida de novo.") : tr("Cofre aberto."));
+      // Phones: the browser may clear site data under storage pressure, and there is no folder sync
+      void requestPersistentStorage().then(persisted => {
+        if (!persisted && !isFolderSyncSupported()) {
+          setTimeout(() => showToast(tr("Este navegador pode apagar os dados do site. Exporte um backup de vez em quando.")), 3800);
+        }
+      });
     } catch (err: any) {
       console.error(err);
       showToast(tr("Erro ao carregar os itens descriptografados."));

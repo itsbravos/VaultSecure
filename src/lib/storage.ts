@@ -170,6 +170,20 @@ export function saveDecryptedSettings(settings: VaultSettings, key: CryptoKey, s
   return settingsWrites;
 }
 
+/**
+ * Ask the browser not to evict this site's data when the device runs low on space.
+ * Without it, Chrome on Android may silently clear the vault. True when granted
+ * (or when the browser has no such API and never evicts on its own).
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return true;
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  } catch {
+    return false;
+  }
+}
+
 /* --------------------------------------------------------- failed attempts */
 // Kept on disk so reloading the page doesn't reset the self-destruct counter.
 
