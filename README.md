@@ -32,7 +32,7 @@ VaultSecure stores your logins, cards, secure notes and API keys in an encrypted
 ### How your data is protected
 
 - **Zero-knowledge.** Your master password is never stored or sent anywhere. If you forget it, no one can recover the vault.
-- **Key derivation:** PBKDF2 (HMAC-SHA256, 250,000 iterations) with a random 16-byte salt per vault.
+- **Key derivation:** PBKDF2 (HMAC-SHA256, 600,000 iterations) with a random 16-byte salt per vault.
 - **Encryption:** AES-256-GCM with a fresh 96-bit IV for every save, using the browser's Web Crypto API.
 - **Sync and backup files** are encrypted the same way. Anyone who gets the file sees only random bytes.
 
@@ -113,7 +113,7 @@ O VaultSecure guarda seus logins, cartões, notas seguras e chaves de API num co
 ### Como seus dados são protegidos
 
 - **Zero-knowledge.** Sua senha mestra nunca é guardada nem enviada. Se você esquecê-la, ninguém consegue recuperar o cofre.
-- **Derivação da chave:** PBKDF2 (HMAC-SHA256, 250.000 iterações) com salt aleatório de 16 bytes por cofre.
+- **Derivação da chave:** PBKDF2 (HMAC-SHA256, 600.000 iterações) com salt aleatório de 16 bytes por cofre.
 - **Criptografia:** AES-256-GCM com um IV novo de 96 bits a cada gravação, usando a Web Crypto API do navegador.
 - **Arquivos de sincronização e de backup** usam a mesma criptografia. Quem pegar o arquivo vê apenas bytes aleatórios.
 

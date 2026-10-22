@@ -10,21 +10,177 @@ import {
   VaultSettings,
 } from '../types';
 import {
+  KDF_ITERATIONS,
+  LEGACY_KDF_ITERATIONS,
   calculatePasswordStrength,
   decryptVaultData,
   deriveMasterKey,
   encryptVaultData,
+  generateRandomKey,
   getRandomBytes,
   isLocalLeakedPassword,
+  iterationsOfKey,
 } from './crypto';
 
 const STORAGE_KEYS = {
   VAULT_ENCRYPTED: 'vaultsecure_items_encrypted',
   VAULT_SETTINGS: 'vaultsecure_settings',
+  VAULT_SETTINGS_SECURE: 'vaultsecure_settings_secure',
   VAULT_SALT: 'vaultsecure_master_salt',
   VAULT_SALT_VERIFIER: 'vaultsecure_pass_verifier',
+  DURESS_VERIFIER: 'vaultsecure_duress_verifier',
+  KDF_ITERATIONS: 'vaultsecure_kdf_iterations',
+  FAILED_ATTEMPTS: 'vaultsecure_failed_attempts',
   IS_INITIALIZED: 'vaultsecure_is_initialized',
 };
+
+const VAULT_CHECK = 'VAULT_VERIFIED_OK';
+const DURESS_CHECK = 'VAULT_DURESS_OK';
+
+/**
+ * Settings that only ever live inside the encrypted blob. Everything else (theme,
+ * language, auto-lock...) must be readable on the lock screen, so it stays plain.
+ * The 2FA/certificate flags are here too: whoever opens the vault with the duress
+ * password must not be able to tell they were ever turned on.
+ */
+const SECURE_SETTING_KEYS = [
+  'require2FA',
+  'totpSecret',
+  'totpVerified',
+  'backupCodes',
+  'requireDigitalCert',
+  'digitalCertificates',
+  'duressEnabled',
+  'duressPassword',
+] as const;
+type SecureSettings = Pick<VaultSettings, (typeof SECURE_SETTING_KEYS)[number]>;
+
+const splitSettings = (settings: Partial<VaultSettings>) => {
+  const plain: Partial<VaultSettings> = { ...settings };
+  const secure: Partial<SecureSettings> = {};
+  for (const k of SECURE_SETTING_KEYS) {
+    if (k in plain) (secure as any)[k] = plain[k];
+    delete plain[k];
+  }
+  delete plain.duressPasswordHash;
+  return { plain, secure };
+};
+
+/** PBKDF2 iterations the local vault key is derived with */
+export function getStoredKdfIterations(): number {
+  return Number(localStorage.getItem(STORAGE_KEYS.KDF_ITERATIONS)) || LEGACY_KDF_ITERATIONS;
+}
+
+const checkVerifier = async (raw: string | null, key: CryptoKey, expected: string): Promise<boolean> => {
+  if (!raw) return false;
+  try {
+    const data = await decryptVaultData<{ check: string }>(JSON.parse(raw), key);
+    return data?.check === expected;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The duress verifier always exists, built from a random key while duress is off,
+ * so its presence alone says nothing. It is derived like the master key (same salt
+ * and iterations), so unlocking still costs a single PBKDF2 run.
+ */
+async function buildDuressVerifier(
+  duressPassword: string | undefined,
+  salt: Uint8Array,
+  iterations: number
+): Promise<EncryptedVaultPayload> {
+  const key = duressPassword ? await deriveMasterKey(duressPassword, salt, iterations) : await generateRandomKey();
+  const payload = await encryptVaultData({ check: DURESS_CHECK }, key, salt);
+  return { ...payload, kdfIterations: iterations };
+}
+
+/* ------------------------------------------------- encrypted settings state */
+
+// Key the encrypted settings are written with while the real vault is open.
+// Null when locked or in duress mode: then only the plain part is saved.
+let settingsKey: { key: CryptoKey; salt: Uint8Array } | null = null;
+let settingsWrites: Promise<void> = Promise.resolve();
+let duressBuiltFrom: string | undefined | null = null; // null = unknown, rebuild on next save
+
+export function activateSettingsKey(key: CryptoKey, salt: Uint8Array): void {
+  settingsKey = { key, salt };
+}
+
+export function deactivateSettingsKey(): void {
+  settingsKey = null;
+  duressBuiltFrom = null;
+}
+
+async function readSecureSettings(key: CryptoKey): Promise<Partial<SecureSettings> | null> {
+  const raw = localStorage.getItem(STORAGE_KEYS.VAULT_SETTINGS_SECURE);
+  if (!raw) return null;
+  return decryptVaultData<Partial<SecureSettings>>(JSON.parse(raw), key);
+}
+
+async function writeSettings(settings: VaultSettings, target: { key: CryptoKey; salt: Uint8Array }): Promise<void> {
+  const { secure } = splitSettings(settings);
+  const encrypted = await encryptVaultData(secure, target.key, target.salt);
+  localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS_SECURE, JSON.stringify(encrypted));
+
+  const duressPassword = secure.duressEnabled ? secure.duressPassword : undefined;
+  if (duressPassword !== duressBuiltFrom || !localStorage.getItem(STORAGE_KEYS.DURESS_VERIFIER)) {
+    const verifier = await buildDuressVerifier(duressPassword, target.salt, getStoredKdfIterations());
+    localStorage.setItem(STORAGE_KEYS.DURESS_VERIFIER, JSON.stringify(verifier));
+    duressBuiltFrom = duressPassword;
+  }
+}
+
+/**
+ * Full settings for an opened vault. Also moves secrets left in plain text by
+ * older versions into the encrypted blob. A legacy duress hash can't be turned
+ * back into a password, so duress is switched off and `duressNeedsReset` is set.
+ */
+export async function decryptVaultSettings(
+  key: CryptoKey,
+  salt: Uint8Array
+): Promise<{ settings: VaultSettings; duressNeedsReset: boolean }> {
+  await settingsWrites;
+  const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.VAULT_SETTINGS) || '{}') as Partial<VaultSettings>;
+  const stored = await readSecureSettings(key);
+  const legacy = splitSettings(raw);
+  const duressNeedsReset = !!raw.duressPasswordHash && !stored?.duressPassword;
+
+  const secure: Partial<SecureSettings> = { ...legacy.secure, ...(stored || {}) };
+  if (duressNeedsReset) {
+    secure.duressEnabled = false;
+    delete secure.duressPassword;
+  }
+  const settings: VaultSettings = { ...DEFAULT_SETTINGS, ...legacy.plain, ...secure };
+
+  const hasPlainSecrets = Object.keys(legacy.secure).length > 0 || 'duressPasswordHash' in raw;
+  if (!stored || hasPlainSecrets || !localStorage.getItem(STORAGE_KEYS.DURESS_VERIFIER)) {
+    localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS, JSON.stringify(legacy.plain));
+    await writeSettings(settings, { key, salt });
+  }
+  return { settings, duressNeedsReset };
+}
+
+/** Save full settings with an explicit key, before the vault is fully open (e.g. a used backup code) */
+export function saveDecryptedSettings(settings: VaultSettings, key: CryptoKey, salt: Uint8Array): Promise<void> {
+  settingsWrites = settingsWrites
+    .then(() => writeSettings(settings, { key, salt }))
+    .catch(err => console.error('Error saving encrypted settings:', err));
+  return settingsWrites;
+}
+
+/* --------------------------------------------------------- failed attempts */
+// Kept on disk so reloading the page doesn't reset the self-destruct counter.
+
+export function loadFailedAttempts(): number {
+  return Number(localStorage.getItem(STORAGE_KEYS.FAILED_ATTEMPTS)) || 0;
+}
+
+export function saveFailedAttempts(count: number): void {
+  if (count > 0) localStorage.setItem(STORAGE_KEYS.FAILED_ATTEMPTS, String(count));
+  else localStorage.removeItem(STORAGE_KEYS.FAILED_ATTEMPTS);
+}
 
 export const DEFAULT_SETTINGS: VaultSettings = {
   userName: 'Seu Nome',
@@ -42,7 +198,7 @@ export const DEFAULT_SETTINGS: VaultSettings = {
   theme: 'beige',
   accentColor: 'amber',
   quickActionIds: ['generate_pass', 'add_login', 'add_card', 'browser_import', 'audit_view', 'cert_view', 'backup_view'],
-  enableOnlineFavicons: true,
+  enableOnlineFavicons: false, // sends every saved domain to Google; opt-in
 };
 
 /**
@@ -90,18 +246,22 @@ export async function initializeNewVault(
     binary += String.fromCharCode(salt[i]);
   }
   localStorage.setItem(STORAGE_KEYS.VAULT_SALT, btoa(binary));
+  localStorage.setItem(STORAGE_KEYS.KDF_ITERATIONS, String(KDF_ITERATIONS));
+  saveFailedAttempts(0);
 
   const masterKey = await deriveMasterKey(masterPassword, salt);
 
   // Store verifier token to quickly validate password on unlock without decrypting full database
-  const verifierToken = await encryptVaultData({ check: 'VAULT_VERIFIED_OK' }, masterKey, salt);
+  const verifierToken = await encryptVaultData({ check: VAULT_CHECK }, masterKey, salt);
   localStorage.setItem(STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(verifierToken));
 
   const encryptedItems = await encryptVaultData(initialItems, masterKey, salt);
   localStorage.setItem(STORAGE_KEYS.VAULT_ENCRYPTED, JSON.stringify(encryptedItems));
 
   const settings: VaultSettings = { ...DEFAULT_SETTINGS, ...initialSettings };
-  localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS, JSON.stringify(splitSettings(settings).plain));
+  duressBuiltFrom = null;
+  await writeSettings(settings, { key: masterKey, salt });
 
   localStorage.setItem(STORAGE_KEYS.IS_INITIALIZED, 'true');
 
@@ -109,43 +269,41 @@ export async function initializeNewVault(
 }
 
 /**
- * Verify Master Password against verifier payload or Duress Password Hash
+ * Verify the Master Password (or the duress password) with one key derivation.
+ * A vault still on the old iteration count is re-keyed on the spot; the old key
+ * comes back as `legacyKey` so sync files written before the upgrade stay readable.
  */
-export async function verifyMasterPassword(
-  password: string
-): Promise<{ valid: boolean; isDuress?: boolean; masterKey: CryptoKey | null; salt: Uint8Array | null }> {
+export async function verifyMasterPassword(password: string): Promise<{
+  valid: boolean;
+  isDuress?: boolean;
+  masterKey: CryptoKey | null;
+  salt: Uint8Array | null;
+  legacyKey?: CryptoKey;
+}> {
+  const invalid = { valid: false, masterKey: null, salt: null };
   try {
-    const salt = getStoredMasterSalt();
-    const settings = loadVaultSettings();
-
-    // Check if password matches Duress Coercion Password
-    if (settings.duressEnabled && settings.duressPasswordHash) {
-      const inputHash = await import('./crypto').then(m => m.hashSha256(password));
-      if (inputHash === settings.duressPasswordHash) {
-        // Generate a valid temporary key for duress session
-        const duressKey = await deriveMasterKey(password, salt);
-        return { valid: true, isDuress: true, masterKey: duressKey, salt };
-      }
-    }
-
     const verifierRaw = localStorage.getItem(STORAGE_KEYS.VAULT_SALT_VERIFIER);
+    if (!verifierRaw) return invalid;
 
-    if (!verifierRaw) {
-      return { valid: false, masterKey: null, salt: null };
+    const salt = getStoredMasterSalt();
+    const iterations = getStoredKdfIterations();
+    const key = await deriveMasterKey(password, salt, iterations);
+
+    if (await checkVerifier(verifierRaw, key, VAULT_CHECK)) {
+      if (iterations < KDF_ITERATIONS) {
+        const upgraded = await deriveMasterKey(password, salt);
+        await rekeyLocalVaults(key, upgraded, salt);
+        return { valid: true, isDuress: false, masterKey: upgraded, salt, legacyKey: key };
+      }
+      return { valid: true, isDuress: false, masterKey: key, salt };
     }
 
-    const masterKey = await deriveMasterKey(password, salt);
-    const verifierPayload: EncryptedVaultPayload = JSON.parse(verifierRaw);
-
-    const decrypted = await decryptVaultData<{ check: string }>(verifierPayload, masterKey);
-
-    if (decrypted && decrypted.check === 'VAULT_VERIFIED_OK') {
-      return { valid: true, isDuress: false, masterKey, salt };
+    if (await checkVerifier(localStorage.getItem(STORAGE_KEYS.DURESS_VERIFIER), key, DURESS_CHECK)) {
+      return { valid: true, isDuress: true, masterKey: key, salt };
     }
-
-    return { valid: false, masterKey: null, salt: null };
+    return invalid;
   } catch (err) {
-    return { valid: false, masterKey: null, salt: null };
+    return invalid;
   }
 }
 
@@ -216,7 +374,7 @@ export async function saveEncryptedVaultItems(
 }
 
 /**
- * Load Vault Settings from LocalStorage
+ * Load the plain (lock-screen readable) settings. Secrets come from decryptVaultSettings.
  */
 export function loadVaultSettings(): VaultSettings {
   try {
@@ -229,10 +387,17 @@ export function loadVaultSettings(): VaultSettings {
 }
 
 /**
- * Save Vault Settings to LocalStorage
+ * Save settings: the plain part right away, the secrets encrypted in the
+ * background — only while the real vault is open (see activateSettingsKey).
  */
-export function saveVaultSettings(settings: VaultSettings): void {
-  localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS, JSON.stringify(settings));
+export function saveVaultSettings(settings: VaultSettings): Promise<void> {
+  localStorage.setItem(STORAGE_KEYS.VAULT_SETTINGS, JSON.stringify(splitSettings(settings).plain));
+  const target = settingsKey;
+  if (!target) return settingsWrites;
+  settingsWrites = settingsWrites
+    .then(() => writeSettings(settings, target))
+    .catch(err => console.error('Error saving encrypted settings:', err));
+  return settingsWrites;
 }
 
 /**
@@ -341,18 +506,10 @@ export async function changeMasterPassword(
   currentSalt: Uint8Array
 ): Promise<{ masterKey: CryptoKey; salt: Uint8Array }> {
   // 1. Verify current password
-  const currentKey = await deriveMasterKey(currentPassword, currentSalt);
+  const currentKey = await deriveMasterKey(currentPassword, currentSalt, getStoredKdfIterations());
   const verifierRaw = localStorage.getItem(STORAGE_KEYS.VAULT_SALT_VERIFIER);
-  if (verifierRaw) {
-    try {
-      const verifierPayload: EncryptedVaultPayload = JSON.parse(verifierRaw);
-      const test = await decryptVaultData<{ check: string }>(verifierPayload, currentKey);
-      if (!test || test.check !== 'VAULT_VERIFIED_OK') {
-        throw new Error('Senha mestra atual incorreta.');
-      }
-    } catch (e: any) {
-      throw new Error(e.message || 'Senha mestra atual incorreta.');
-    }
+  if (verifierRaw && !(await checkVerifier(verifierRaw, currentKey, VAULT_CHECK))) {
+    throw new Error('Senha mestra atual incorreta.');
   }
 
   // 2. New salt + key, then re-encrypt every vault (not just the open one)
@@ -396,22 +553,37 @@ export async function saveAllVaults(
 }
 
 /**
- * Re-encrypt everything on this device under a new key + salt: all vaults and the
- * password verifier. Everything is decrypted first, so a wrong old key aborts
- * before anything is overwritten.
+ * Re-encrypt everything on this device under a new key + salt: all vaults, the
+ * encrypted settings and both verifiers. Everything is decrypted and re-encrypted
+ * first and written in one synchronous pass, so a wrong old key (or a crash
+ * mid-way) can't leave the vault half under each key.
  */
 export async function rekeyLocalVaults(oldKey: CryptoKey, newKey: CryptoKey, newSalt: Uint8Array): Promise<void> {
+  await settingsWrites;
   const vaults = await loadAllVaults(oldKey);
-  const verifier = await encryptVaultData({ check: 'VAULT_VERIFIED_OK' }, newKey, newSalt);
+  const secure = await readSecureSettings(oldKey);
+  const iterations = iterationsOfKey(newKey) ?? KDF_ITERATIONS;
 
-  localStorage.setItem(STORAGE_KEYS.VAULT_SALT, saltToBase64(newSalt));
-  localStorage.setItem(STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(verifier));
+  const writes: [string, string][] = [
+    [STORAGE_KEYS.VAULT_SALT, saltToBase64(newSalt)],
+    [STORAGE_KEYS.KDF_ITERATIONS, String(iterations)],
+    [STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(await encryptVaultData({ check: VAULT_CHECK }, newKey, newSalt))],
+  ];
+  const duressPassword = secure?.duressEnabled ? secure.duressPassword : undefined;
+  writes.push([STORAGE_KEYS.DURESS_VERIFIER, JSON.stringify(await buildDuressVerifier(duressPassword, newSalt, iterations))]);
+  if (secure) {
+    writes.push([STORAGE_KEYS.VAULT_SETTINGS_SECURE, JSON.stringify(await encryptVaultData(secure, newKey, newSalt))]);
+  }
   for (const id of VAULT_IDS) {
     // Don't materialize vaults that never existed
     if (vaults[id].length > 0 || localStorage.getItem(vaultStorageKey(id))) {
-      await saveEncryptedVaultItems(vaults[id], newKey, newSalt, id);
+      writes.push([vaultStorageKey(id), JSON.stringify(await encryptVaultData(vaults[id], newKey, newSalt))]);
     }
   }
+
+  writes.forEach(([k, v]) => localStorage.setItem(k, v));
+  duressBuiltFrom = duressPassword;
+  if (settingsKey) settingsKey = { key: newKey, salt: newSalt };
 }
 
 /* ------------------------------------------------------------ tombstones */
@@ -444,6 +616,7 @@ export function recordDeletion(vaultId: string, itemId: string, at = Date.now())
  * Self-destruct: Clear all local storage data completely
  */
 export function clearAllVaultData(): void {
+  deactivateSettingsKey();
   Object.keys(localStorage)
     .filter(key => key.startsWith('vaultsecure_'))
     .forEach(key => localStorage.removeItem(key));

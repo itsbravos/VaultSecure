@@ -13,7 +13,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { VaultItem } from '../types';
-import { encryptVaultData, decryptVaultData, getRandomBytes, deriveMasterKey, base64ToBuffer } from '../lib/crypto';
+import { encryptVaultData, decryptVaultData, getRandomBytes, deriveMasterKey, base64ToBuffer, kdfIterationsOf } from '../lib/crypto';
 import { loadEncryptedVaultItems, saveEncryptedVaultItems, recordDeletion } from '../lib/storage';
 import { confirmDialog } from './DialogHost';
 import { VAULTS } from '../lib/vaults';
@@ -225,7 +225,7 @@ export const BackupExportModal: React.FC<BackupExportModalProps> = ({
             // unique per installation, so reusing the local masterKey would
             // fail even when the master passwords match across devices.
             const fileSalt = base64ToBuffer(parsed.salt);
-            const importKey = await deriveMasterKey(importPassphrase, fileSalt);
+            const importKey = await deriveMasterKey(importPassphrase, fileSalt, kdfIterationsOf(parsed));
 
             const decryptedItems = await decryptVaultData<ExportedVaultItem[]>(parsed, importKey);
             await applyImportedItems(decryptedItems);

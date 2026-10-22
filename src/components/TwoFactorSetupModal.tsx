@@ -13,6 +13,7 @@ import {
   Download,
 } from 'lucide-react';
 import { generateTotpSecret, getTotpAuthUri, verifyTOTP } from '../lib/totp';
+import { randomString } from '../lib/crypto';
 import { VaultSettings } from '../types';
 import { getTheme, getAccent } from '../lib/theme';
 import { confirmDialog } from './DialogHost';
@@ -61,10 +62,11 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
         .then(url => setQrCodeDataUrl(url))
         .catch(err => console.error(err));
 
-      // Generate 6 backup codes
+      // 8 single-use emergency codes, ~50 bits each, accepted on the 2FA step of the lock screen
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       const codes = [];
-      for (let i = 0; i < 6; i++) {
-        codes.push(Math.random().toString(36).substring(2, 8).toUpperCase());
+      for (let i = 0; i < 8; i++) {
+        codes.push(`${randomString(5, alphabet)}-${randomString(5, alphabet)}`);
       }
       setBackupCodes(codes);
     }

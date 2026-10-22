@@ -1,11 +1,23 @@
 /**
  * Web Crypto API implementation for End-to-End Encryption (E2EE)
- * Algorithm: PBKDF2 with SHA-256 (250,000 iterations) + AES-256-GCM (12-byte IV)
+ * Algorithm: PBKDF2 with SHA-256 (600,000 iterations) + AES-256-GCM (12-byte IV)
  */
 
 import { EncryptedVaultPayload } from '../types';
 
-const PBKDF2_ITERATIONS = 250000;
+/** OWASP 2023 minimum for PBKDF2-HMAC-SHA256 */
+export const KDF_ITERATIONS = 600000;
+/** What every vault, backup and sync file used before the iteration count was recorded */
+export const LEGACY_KDF_ITERATIONS = 250000;
+
+// Iteration count each derived key was made with, so encrypted payloads can record it
+const keyIterations = new WeakMap<CryptoKey, number>();
+
+export const iterationsOfKey = (key: CryptoKey): number | undefined => keyIterations.get(key);
+
+/** Iterations needed to re-derive the key of a payload (files without the field are legacy) */
+export const kdfIterationsOf = (payload: Pick<EncryptedVaultPayload, 'kdfIterations'>): number =>
+  payload.kdfIterations || LEGACY_KDF_ITERATIONS;
 
 /**
  * Generate cryptographically secure random bytes
@@ -14,6 +26,27 @@ export function getRandomBytes(length: number): Uint8Array {
   const array = new Uint8Array(length);
   window.crypto.getRandomValues(array);
   return array;
+}
+
+/**
+ * Uniform random integer in [0, max) without modulo bias
+ */
+export function randomInt(max: number): number {
+  const limit = Math.floor(0x100000000 / max) * max;
+  const buf = new Uint32Array(1);
+  do {
+    window.crypto.getRandomValues(buf);
+  } while (buf[0] >= limit);
+  return buf[0] % max;
+}
+
+/**
+ * Random string from an alphabet (ids, backup codes, serial numbers)
+ */
+export function randomString(length: number, alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'): string {
+  let out = '';
+  for (let i = 0; i < length; i++) out += alphabet[randomInt(alphabet.length)];
+  return out;
 }
 
 /**
@@ -43,7 +76,11 @@ export function base64ToBuffer(base64: string): Uint8Array {
 /**
  * Derive AES-256-GCM CryptoKey from Master Password using PBKDF2
  */
-export async function deriveMasterKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+export async function deriveMasterKey(
+  password: string,
+  salt: Uint8Array,
+  iterations: number = KDF_ITERATIONS
+): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const passwordBytes = encoder.encode(password);
 
@@ -57,11 +94,11 @@ export async function deriveMasterKey(password: string, salt: Uint8Array): Promi
   );
 
   // Derive AES-GCM Key
-  return window.crypto.subtle.deriveKey(
+  const key = await window.crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
       salt,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: 'SHA-256',
     },
     keyMaterial,
@@ -69,6 +106,15 @@ export async function deriveMasterKey(password: string, salt: Uint8Array): Promi
     false, // Non-extractable for memory protection
     ['encrypt', 'decrypt']
   );
+  keyIterations.set(key, iterations);
+  return key;
+}
+
+/**
+ * A random key nobody can derive, for decoy payloads that must look like real ones
+ */
+export function generateRandomKey(): Promise<CryptoKey> {
+  return window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
 /**
@@ -100,6 +146,7 @@ export async function encryptVaultData<T>(
     ciphertext: bufferToBase64(ciphertextBuffer),
     salt: bufferToBase64(salt),
     version: 1,
+    kdfIterations: keyIterations.get(masterKey) ?? KDF_ITERATIONS,
   };
 }
 
@@ -175,11 +222,8 @@ const PASSPHRASE_WORDS = [
 export function generatePassword(options: PasswordGeneratorOptions): string {
   if (options.passphraseMode) {
     const selectedWords: string[] = [];
-    const randomArray = new Uint32Array(options.wordCount);
-    window.crypto.getRandomValues(randomArray);
     for (let i = 0; i < options.wordCount; i++) {
-      const index = randomArray[i] % PASSPHRASE_WORDS.length;
-      selectedWords.push(PASSPHRASE_WORDS[index]);
+      selectedWords.push(PASSPHRASE_WORDS[randomInt(PASSPHRASE_WORDS.length)]);
     }
     return selectedWords.join(options.wordSeparator || '-');
   }
@@ -202,15 +246,7 @@ export function generatePassword(options: PasswordGeneratorOptions): string {
     charset = LOWERCASE_ALL + NUMBER_ALL;
   }
 
-  const randomValues = new Uint32Array(options.length);
-  window.crypto.getRandomValues(randomValues);
-
-  let result = '';
-  for (let i = 0; i < options.length; i++) {
-    result += charset[randomValues[i] % charset.length];
-  }
-
-  return result;
+  return randomString(options.length, charset);
 }
 
 /**
