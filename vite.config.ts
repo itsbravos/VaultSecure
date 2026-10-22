@@ -31,8 +31,8 @@ export default defineConfig(() => {
           scope: base,
           display: 'standalone',
           orientation: 'portrait-primary',
-          background_color: '#0A0A0A',
-          theme_color: '#0A0A0A',
+          background_color: '#0E1F24',
+          theme_color: '#0E1F24',
           categories: ['utilities', 'security', 'productivity'],
           icons: [
             { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },

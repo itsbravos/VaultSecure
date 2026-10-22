@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   AuthSession,
   VaultItem,
@@ -36,18 +36,89 @@ import { SettingsView } from './components/SettingsView';
 import { BackupView } from './components/BackupView';
 import { CertificatesView } from './components/CertificatesView';
 import { PasswordGeneratorView } from './components/PasswordGeneratorView';
-import { AutoFillCompanionModal } from './components/AutoFillCompanionModal';
 import { ChangeMasterPasswordModal } from './components/ChangeMasterPasswordModal';
 import { ClipboardWarningBanner } from './components/ClipboardWarningBanner';
 import { ZeroKnowledgeOnboardingModal } from './components/ZeroKnowledgeOnboardingModal';
+import { BrowserImportModal } from './components/BrowserImportModal';
+import { useVaultSync } from './lib/useVaultSync';
+import { forgetFolder } from './lib/syncFolder';
+import { HomeView, AppView } from './components/HomeView';
+import { GuidedTour, TourStep } from './components/GuidedTour';
+import { LanguagePicker } from './components/LanguagePicker';
+import { describeStats } from './lib/vaultSync';
+import { VaultId, loadAllVaults, recordDeletion } from './lib/storage';
 import { getTheme, getAccent } from './lib/theme';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { Check, ShieldCheck, Lock, AlertCircle } from 'lucide-react';
+import { tr, setLang, detectLang, Lang } from './lib/i18n';
+
+const VAULT_DISPLAY_NAMES: Record<string, string> = { pessoal: 'Pessoal', trabalho: 'Trabalho', compartilhado: 'Compartilhado' };
+
+const buildTourSteps = (autoLockMinutes: number): TourStep[] => [
+  {
+    title: tr("Bem-vindo ao seu cofre"),
+    body: tr("Tudo o que você guardar aqui é criptografado neste aparelho antes de ser salvo. Vamos ver onde fica cada coisa."),
+  },
+  {
+    target: 'vault-switcher',
+    title: tr("Três cofres separados"),
+    body: tr("Pessoal, Trabalho e Compartilhado. Troque de cofre aqui para manter cada assunto no seu lugar."),
+  },
+  {
+    target: 'new-item',
+    title: tr("Adicione um item"),
+    body: tr("Logins, cartões, notas seguras e chaves de API. O botão de gerar senha está dentro do formulário."),
+  },
+  {
+    target: 'home-import',
+    title: tr("Traga as senhas do navegador"),
+    body: tr("Exporte as senhas do Chrome, Edge, Firefox ou Safari e importe aqui. Você revisa tudo e escolhe o cofre de cada uma."),
+  },
+  {
+    target: 'nav-items',
+    title: tr("Seus itens"),
+    body: tr("A lista completa, com busca (atalho Ctrl+K) e filtros por tipo. Clique num item para ver, copiar ou editar."),
+  },
+  {
+    target: 'nav-health',
+    title: tr("Saúde do cofre"),
+    body: tr("Mostra senhas vazadas, fracas ou repetidas e o que corrigir primeiro."),
+  },
+  {
+    target: 'nav-generator',
+    title: tr("Gerador de senhas"),
+    body: tr("Cria senhas aleatórias e longas, ou frases fáceis de digitar."),
+  },
+  {
+    target: 'nav-settings',
+    title: tr("Configurações"),
+    body: tr("Tema, verificação em duas etapas e sincronização entre aparelhos por uma pasta do Syncthing, OneDrive ou Drive."),
+  },
+  {
+    target: 'lock',
+    title: tr("Bloqueie quando sair"),
+    body: autoLockMinutes > 0
+      ? tr("O cofre também se bloqueia sozinho após {p0} minutos sem uso.", { p0: autoLockMinutes })
+      : tr("O bloqueio automático está desligado. Você pode ativá-lo nas Configurações."),
+  },
+  {
+    title: tr("Uma senha para tudo"),
+    body: tr("Sua senha mestra nunca é guardada nem enviada. Se esquecê-la, ninguém consegue recuperar o cofre, nem nós. Veja como isso funciona:"),
+  },
+];
 
 export default function App() {
   // Vault Settings State
   const [settings, setSettings] = useState<VaultSettings>(() => loadVaultSettings());
+  // Language is applied before anything renders; changing it remounts the UI (key={lang})
+  const lang: Lang = settings.language ?? detectLang();
+  setLang(lang);
+  const handleChangeLanguage = (language: Lang) => {
+    const updated = { ...loadVaultSettings(), ...settings, language };
+    setSettings(updated);
+    saveVaultSettings(updated);
+  };
 
   // Session Auth State
   const [session, setSession] = useState<AuthSession>(() => {
@@ -70,7 +141,7 @@ export default function App() {
   const [items, setItems] = useState<VaultItem[]>([]);
 
   // Navigation & Filter State
-  const [activeView, setActiveView] = useState<'items' | 'generator' | 'audit' | 'settings' | 'certificates' | 'backup'>('items');
+  const [activeView, setActiveView] = useState<AppView>('home');
   const [activeCategory, setActiveCategory] = useState<ItemCategory | 'all' | 'favorites'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -84,30 +155,44 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
-  const [isAutoFillModalOpen, setIsAutoFillModalOpen] = useState(false);
   const [isChangeMasterPassModalOpen, setIsChangeMasterPassModalOpen] = useState(false);
   const [activeVaultId, setActiveVaultId] = useState<string>('pessoal');
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isBrowserImportOpen, setIsBrowserImportOpen] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [isLanguagePickerOpen, setIsLanguagePickerOpen] = useState(false);
 
   // Toast / Clipboard Notification State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [clipboardWarning, setClipboardWarning] = useState<{ label: string } | null>(null);
+  const [clipboardWarning, setClipboardWarning] = useState<{ label: string; expiresAt: number } | null>(null);
+  // Items the online (HIBP) scan found in breaches; feeds the report everywhere, not just the health page
   const [onlineLeakedIds, setOnlineLeakedIds] = useState<Set<string>>(new Set());
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-Lock Inactivity Timer State
   const [autoLockSecondsLeft, setAutoLockSecondsLeft] = useState<number>(
     settings.autoLockMinutes > 0 ? settings.autoLockMinutes * 60 : 300
   );
+  // Kept in a ref so mouse movement doesn't re-render the whole app
+  const lastActivityRef = useRef(Date.now());
 
-  // Show Toast
+  // Show Toast (a newer toast replaces the old one and gets its full time on screen)
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3500);
   };
+
+  const wipeClipboard = useCallback(() => {
+    if (clipboardTimerRef.current) clearTimeout(clipboardTimerRef.current);
+    clipboardTimerRef.current = null;
+    navigator.clipboard.writeText('').catch(() => {});
+    setClipboardWarning(null);
+  }, []);
 
   // Lock Vault Action
   const handleLockVault = useCallback(() => {
@@ -123,35 +208,33 @@ export default function App() {
     }));
     setItems([]);
     setSelectedItem(null);
-    showToast('Cofre bloqueado com segurança.');
-  }, []);
+    setIsAddItemOpen(false);
+    setEditingItem(null);
+    // A copied password shouldn't outlive the session that revealed it
+    wipeClipboard();
+    showToast(tr("Cofre bloqueado."));
+  }, [wipeClipboard]);
 
   // Track User Activity for Auto-Lock Timer
-  const updateActivity = useCallback(() => {
-    if (session.isUnlocked) {
-      setSession(prev => ({ ...prev, lastActivity: Date.now() }));
-      if (settings.autoLockMinutes > 0) {
-        setAutoLockSecondsLeft(settings.autoLockMinutes * 60);
-      }
-    }
-  }, [session.isUnlocked, settings.autoLockMinutes]);
-
   useEffect(() => {
-    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart'];
-    const handleUserActivity = () => updateActivity();
-
-    events.forEach(evt => window.addEventListener(evt, handleUserActivity));
+    if (!session.isUnlocked) return;
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'wheel'];
+    const handleUserActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+    events.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
     return () => {
       events.forEach(evt => window.removeEventListener(evt, handleUserActivity));
     };
-  }, [updateActivity]);
+  }, [session.isUnlocked]);
 
   // Auto-lock countdown tick effect
   useEffect(() => {
     if (!session.isUnlocked || settings.autoLockMinutes === 0) return;
+    lastActivityRef.current = Date.now();
 
     const interval = setInterval(() => {
-      const elapsedSeconds = Math.floor((Date.now() - session.lastActivity) / 1000);
+      const elapsedSeconds = Math.floor((Date.now() - lastActivityRef.current) / 1000);
       const totalAllowed = settings.autoLockMinutes * 60;
       const remaining = totalAllowed - elapsedSeconds;
 
@@ -163,15 +246,25 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [session.isUnlocked, session.lastActivity, settings.autoLockMinutes, handleLockVault]);
+  }, [session.isUnlocked, settings.autoLockMinutes, handleLockVault]);
+
+  // Folder sync between devices. Never runs for the duress decoy.
+  const sync = useVaultSync({
+    masterKey: session.masterKey,
+    salt: session.salt,
+    enabled: session.isUnlocked && !session.isDuressMode,
+    onVaultsChanged: (vaults, stats) => {
+      setItems(vaults[activeVaultId as VaultId] || []);
+      setSelectedItem(prev => (prev ? vaults[activeVaultId as VaultId]?.find(i => i.id === prev.id) ?? null : prev));
+      showToast(tr("Sincronizado: {p0}.", { p0: describeStats(stats) }));
+    },
+    onKeyChanged: (masterKey, salt) => setSession(prev => ({ ...prev, masterKey, salt })),
+  });
 
   // Unlock Vault Handler
-  const handleSuccessUnlock = async (
-    masterKey: CryptoKey,
-    salt: Uint8Array,
-    isDuress = false,
-    isFirstTimeSetup = false
-  ) => {
+  // isFirstTimeSetup comes from the lock screen; the guided tour already opens for
+  // any vault that hasn't completed it, so a brand-new vault gets it automatically.
+  const handleSuccessUnlock = async (masterKey: CryptoKey, salt: Uint8Array, isDuress = false, _isFirstTimeSetup = false) => {
     try {
       if (isDuress) {
         setItems(DECOY_DURESS_ITEMS);
@@ -184,12 +277,20 @@ export default function App() {
           lastActivity: Date.now(),
           step: 'unlocked',
         }));
-        showToast('Cofre secundário desbloqueado (Modo Coação).');
+        showToast(tr("Cofre aberto."));
         return;
       }
 
       const decryptedItems = await loadEncryptedVaultItems(masterKey, activeVaultId);
       setItems(decryptedItems);
+      // First-run setup writes settings (e.g. the owner's name) straight to storage
+      const stored = loadVaultSettings();
+      setSettings(stored);
+      setActiveView('home');
+      // First time in: walk through the app once the home screen has rendered
+      // First time in: ask for a language, then walk through the app
+      if (!stored.languageChosen) setTimeout(() => setIsLanguagePickerOpen(true), 400);
+      else if (!stored.tourCompleted) setTimeout(() => setIsTourOpen(true), 600);
       setSession(prev => ({
         ...prev,
         isUnlocked: true,
@@ -202,13 +303,10 @@ export default function App() {
       if (settings.autoLockMinutes > 0) {
         setAutoLockSecondsLeft(settings.autoLockMinutes * 60);
       }
-      if (isFirstTimeSetup) {
-        setIsOnboardingOpen(true);
-      }
-      showToast('Cofre descriptografado com sucesso.');
+      showToast(tr("Cofre aberto."));
     } catch (err: any) {
       console.error(err);
-      showToast('Erro ao carregar os itens descriptografados.');
+      showToast(tr("Erro ao carregar os itens descriptografados."));
     }
   };
 
@@ -218,28 +316,37 @@ export default function App() {
       const decrypted = await loadEncryptedVaultItems(session.masterKey, newVaultId);
       setItems(decrypted);
       setSelectedItem(null);
-      const vaultName = newVaultId === 'pessoal' ? 'Cofre Pessoal' : newVaultId === 'trabalho' ? 'Cofre de Trabalho' : 'Cofre Compartilhado';
-      showToast(`Alternado para o ${vaultName}.`);
+      const vaultName = tr(newVaultId === 'pessoal' ? 'Cofre Pessoal' : newVaultId === 'trabalho' ? 'Cofre de Trabalho' : 'Cofre Compartilhado');
+      showToast(tr("Alternado para o {p0}.", { p0: vaultName }));
     }
   };
 
   // Change Master Password
   const handleChangeMasterPassword = async (currentPass: string, newPass: string) => {
     if (!session.salt) return;
+    // Pull in anything other devices wrote before the key changes under them
+    await sync.syncNow();
     const res = await changeMasterPassword(currentPass, newPass, items, session.salt);
     setSession(prev => ({
       ...prev,
       masterKey: res.masterKey,
       salt: res.salt,
     }));
-    showToast('Senha mestra alterada e cofre re-criptografado com sucesso!');
+    await sync.republish(res.masterKey, res.salt);
+    showToast(tr("Senha mestra alterada. Todos os cofres foram recriptografados."));
   };
 
   // Reset/Reinitialize Vault
+  // Callers confirm first (the lock screen dialog). Self-destruct after too many
+  // wrong passwords must not be cancellable, so there is no prompt here.
   const handleResetVault = () => {
-    if (confirm('Tem certeza que deseja apagar o cofre local? Todos os dados armazenados serão permanentemente excluídos.')) {
+    {
       clearAllVaultData();
+      // A fresh vault must not start syncing with the old one's folder
+      void forgetFolder();
       setItems([]);
+      setActiveVaultId('pessoal');
+      setActiveView('home');
       setSettings(DEFAULT_SETTINGS);
       setSession({
         isVaultInitialized: false,
@@ -253,36 +360,60 @@ export default function App() {
         passedCert: false,
         failedAttempts: 0,
       });
-      showToast('Cofre resetado.');
+      showToast(tr("Cofre resetado."));
     }
   };
 
-  // Global Hotkey Listener (Abrir Cofre: Alt+Shift+V / Ctrl+Shift+V, Auto-Fill: Alt+Shift+A / Ctrl+Shift+A)
+  // Global keyboard shortcuts. Ctrl+Shift+V is left alone: it's "paste as plain text".
+  //   Alt+Shift+V  back to the item list
+  //   Ctrl+K or /  focus search               Esc          close the topmost panel
   useEffect(() => {
+    if (!session.isUnlocked) return;
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const isAltShiftV = (e.altKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) || (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v'));
-      const isAltShiftA = (e.altKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) || (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a'));
+      if (e.defaultPrevented) return;
+      const key = e.key.toLowerCase();
+      const target = e.target as HTMLElement;
+      const isTyping = target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 
-      if (isAltShiftV) {
+      if (e.altKey && e.shiftKey && key === 'v') {
         e.preventDefault();
-        if (!session.isUnlocked) {
-          showToast('Atalho Global: Abrir Cofre acionado!');
-        } else {
-          setActiveView('items');
-          showToast('Atalho Global: Cofre Aberto (Visão Principal)');
-        }
+        setActiveView('items');
+        return;
       }
-
-      if (isAltShiftA) {
+      if ((e.ctrlKey || e.metaKey) && key === 'k' || (key === '/' && !isTyping)) {
         e.preventDefault();
-        setIsAutoFillModalOpen(true);
-        showToast('Atalho Global: Assistente de Auto-Preenchimento iniciado!');
+        setActiveView('items');
+        setIsMobileNavOpen(false);
+        // The list mounts after the view switch; wait a frame for the input to exist
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+        return;
+      }
+      if (key === 'escape') {
+        // Close only the topmost layer, in the same order they stack on screen
+        if (isChangeMasterPassModalOpen) setIsChangeMasterPassModalOpen(false);
+        else if (is2FAWizardOpen) setIs2FAWizardOpen(false);
+        else if (isCertWizardOpen) setIsCertWizardOpen(false);
+        else if (isCategoryManagerOpen) setIsCategoryManagerOpen(false);
+        else if (isBackupOpen) setIsBackupOpen(false);
+        else if (isSettingsOpen) setIsSettingsOpen(false);
+        else if (isGeneratorOpen) setIsGeneratorOpen(false);
+        else if (isOnboardingOpen) setIsOnboardingOpen(false);
+        else if (isBrowserImportOpen) setIsBrowserImportOpen(false);
+        else if (isAddItemOpen) setIsAddItemOpen(false);
+        else if (selectedItem) setSelectedItem(null);
+        else if (isMobileNavOpen) setIsMobileNavOpen(false);
+        else if (searchQuery && isTyping) setSearchQuery('');
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [session.isUnlocked]);
+  }, [
+    session.isUnlocked, isChangeMasterPassModalOpen, is2FAWizardOpen, isCertWizardOpen,
+    isCategoryManagerOpen, isBackupOpen, isSettingsOpen, isGeneratorOpen, isOnboardingOpen, isAddItemOpen,
+    selectedItem, isMobileNavOpen, searchQuery, isBrowserImportOpen,
+  ]);
 
   // Save / Add Item
   const handleSaveItem = async (itemData: Partial<VaultItem>) => {
@@ -293,16 +424,20 @@ export default function App() {
 
     if (existingIndex >= 0) {
       updatedList = [...items];
-      updatedList[existingIndex] = { ...updatedList[existingIndex], ...itemData } as VaultItem;
+      // Sync picks the newest version by updatedAt, so every edit must bump it
+      updatedList[existingIndex] = { ...updatedList[existingIndex], ...itemData, updatedAt: Date.now() } as VaultItem;
     } else {
-      updatedList = [itemData as VaultItem, ...items];
+      updatedList = [{ ...itemData, updatedAt: itemData.updatedAt || Date.now() } as VaultItem, ...items];
     }
 
     setItems(updatedList);
+    // Keep an open detail panel in sync (e.g. after restoring an old password)
+    setSelectedItem(prev => (prev && prev.id === itemData.id ? (updatedList.find(i => i.id === prev.id) ?? prev) : prev));
     if (!session.isDuressMode) {
       await saveEncryptedVaultItems(updatedList, session.masterKey, session.salt, activeVaultId);
+      sync.notifyLocalChange();
     }
-    showToast('Registro criptografado e salvo com sucesso!');
+    showToast(existingIndex >= 0 ? tr("Alterações salvas.") : tr("Item adicionado ao cofre."));
   };
 
   // Delete Item
@@ -313,8 +448,11 @@ export default function App() {
     setItems(updatedList);
     if (!session.isDuressMode) {
       await saveEncryptedVaultItems(updatedList, session.masterKey, session.salt, activeVaultId);
+      // Remembered so other devices delete it too instead of syncing it back
+      recordDeletion(activeVaultId, itemId);
+      sync.notifyLocalChange();
     }
-    showToast('Item removido do cofre.');
+    showToast(tr("Item excluído."));
   };
 
   // Toggle Favorite
@@ -324,7 +462,7 @@ export default function App() {
 
     const updatedList = items.map(item => {
       if (item.id === itemId) {
-        return { ...item, favorite: !item.favorite };
+        return { ...item, favorite: !item.favorite, updatedAt: Date.now() };
       }
       return item;
     });
@@ -332,32 +470,39 @@ export default function App() {
     setItems(updatedList);
     if (!session.isDuressMode) {
       await saveEncryptedVaultItems(updatedList, session.masterKey, session.salt, activeVaultId);
+      sync.notifyLocalChange();
     }
   };
 
   // Copy to Clipboard with Auto-Clear Timer & Exposure Detector Warning
-  const handleCopyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+  // The wipe timer lives here, not in the banner, so it keeps running even if
+  // the banner is dismissed and restarts on every new copy.
+  const handleCopyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      showToast(tr("Não foi possível copiar. Verifique a permissão da área de transferência."));
+      return;
+    }
     setCopiedId(text);
-    setClipboardWarning({ label });
-    showToast(`${label} copiado para a área de transferência.`);
+    setTimeout(() => setCopiedId(prev => (prev === text ? null : prev)), 2000);
 
-    setTimeout(() => {
-      setCopiedId(null);
-    }, 2000);
+    const seconds = settings.clipboardClearSeconds || 20;
+    if (clipboardTimerRef.current) clearTimeout(clipboardTimerRef.current);
+    clipboardTimerRef.current = setTimeout(wipeClipboard, seconds * 1000);
+    setClipboardWarning({ label, expiresAt: Date.now() + seconds * 1000 });
   };
 
   const handleClearClipboardNow = () => {
-    navigator.clipboard.writeText('');
-    setClipboardWarning(null);
-    showToast('Área de transferência limpa com sucesso por segurança.');
+    wipeClipboard();
+    showToast(tr("Área de transferência limpa."));
   };
 
   // Save Settings
   const handleSaveSettings = (newSettings: VaultSettings) => {
     setSettings(newSettings);
     saveVaultSettings(newSettings);
-    showToast('Configurações salvas.');
+    showToast(tr("Configurações salvas."));
   };
 
   // Update 2FA Settings
@@ -371,7 +516,7 @@ export default function App() {
     };
     setSettings(updated);
     saveVaultSettings(updated);
-    showToast('Autenticação de 2 Fatores (Google Authenticator) Ativada!');
+    showToast(tr("Autenticação de 2 Fatores (Google Authenticator) Ativada!"));
   };
 
   const handleDisable2FA = () => {
@@ -382,7 +527,7 @@ export default function App() {
     };
     setSettings(updated);
     saveVaultSettings(updated);
-    showToast('Autenticação 2FA Desativada.');
+    showToast(tr("Autenticação 2FA Desativada."));
   };
 
   // Update Digital Certificates Settings
@@ -394,7 +539,7 @@ export default function App() {
     };
     setSettings(updated);
     saveVaultSettings(updated);
-    showToast('Certificados digitais atualizados.');
+    showToast(tr("Certificados digitais atualizados."));
   };
 
   // Import Backup Items — the caller (BackupView/BackupExportModal) already
@@ -403,8 +548,42 @@ export default function App() {
   const handleImportItems = async (finalItems: VaultItem[]) => {
     if (!session.masterKey || !session.salt) return;
     setItems(finalItems);
-    await saveEncryptedVaultItems(finalItems, session.masterKey, session.salt, activeVaultId);
-    showToast(`Cofre atualizado: ${finalItems.length} itens no cofre atual.`);
+    if (!session.isDuressMode) {
+      await saveEncryptedVaultItems(finalItems, session.masterKey, session.salt, activeVaultId);
+      sync.notifyLocalChange();
+    }
+    showToast(tr("Cofre atualizado: {p0} {p1} no cofre atual.", { p0: finalItems.length, p1: finalItems.length === 1 ? tr("item") : tr("itens") }));
+  };
+
+  // Browser import: each item goes to the vault the user chose for it. Add-only:
+  // nothing already in any vault is changed or removed.
+  const handleImportToVaults = async (byVault: Partial<Record<VaultId, VaultItem[]>>) => {
+    if (!session.masterKey || !session.salt) return;
+    let total = 0;
+    for (const [vaultId, newItems] of Object.entries(byVault) as [VaultId, VaultItem[]][]) {
+      if (!newItems?.length) continue;
+      const current =
+        vaultId === activeVaultId ? items : session.isDuressMode ? [] : await loadEncryptedVaultItems(session.masterKey, vaultId);
+      const existingIds = new Set(current.map(i => i.id));
+      const merged = [...current, ...newItems.filter(i => !existingIds.has(i.id))];
+      total += merged.length - current.length;
+      if (vaultId === activeVaultId) setItems(merged);
+      if (!session.isDuressMode) await saveEncryptedVaultItems(merged, session.masterKey, session.salt, vaultId);
+    }
+    if (!session.isDuressMode) sync.notifyLocalChange();
+    showToast(tr(total === 1 ? '{n} item importado.' : '{n} itens importados.', { n: total }));
+  };
+
+  // Everything the import preview compares against, across all vaults
+  const [importExisting, setImportExisting] = useState<VaultItem[]>([]);
+  const openBrowserImport = async () => {
+    try {
+      const all = session.masterKey && !session.isDuressMode ? await loadAllVaults(session.masterKey) : null;
+      setImportExisting(all ? Object.values(all).flat() : items);
+    } catch {
+      setImportExisting(items);
+    }
+    setIsBrowserImportOpen(true);
   };
 
   // Computed Category Counts
@@ -464,6 +643,8 @@ export default function App() {
   if (!session.isUnlocked) {
     return (
       <LockScreen
+        key={lang}
+        onChangeLanguage={handleChangeLanguage}
         session={session}
         settings={settings}
         onSuccessUnlock={handleSuccessUnlock}
@@ -477,13 +658,14 @@ export default function App() {
   const activeAccent = getAccent(settings.accentColor);
 
   return (
-    <div className={`h-screen ${activeTheme.bgMain} text-gray-200 flex flex-col font-sans overflow-hidden select-none antialiased`}>
+    <div key={lang} className={`h-screen ${activeTheme.bgApp} flex flex-col font-sans overflow-hidden select-none antialiased`}>
       
       {/* Clipboard Monitoring Security Banner */}
       {clipboardWarning && (
         <ClipboardWarningBanner
           label={clipboardWarning.label}
-          autoClearSeconds={settings.clipboardClearSeconds || 20}
+          expiresAt={clipboardWarning.expiresAt}
+          totalSeconds={settings.clipboardClearSeconds || 20}
           onClearNow={handleClearClipboardNow}
           onClose={() => setClipboardWarning(null)}
         />
@@ -491,8 +673,11 @@ export default function App() {
 
       {/* Toast Floating Notification */}
       {toastMessage && (
-        <div className="fixed bottom-12 right-6 z-50 bg-[#0F0F0F] border border-emerald-500/60 text-gray-100 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-up text-xs font-mono">
-          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div
+          role="status"
+          className={`fixed ${clipboardWarning ? 'bottom-28' : 'bottom-12'} right-4 sm:right-6 left-4 sm:left-auto z-50 ${activeTheme.bgCard} ${activeTheme.textPrimary} border ${activeTheme.borderMain} pl-3 pr-4 py-2.5 rounded-xl shadow-[0_20px_40px_-16px_rgba(0,0,0,0.6)] flex items-center gap-2.5 animate-slide-up text-[13px]`}
+        >
+          <Check className={`w-4 h-4 ${activeAccent.textAccent} shrink-0`} />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -506,14 +691,14 @@ export default function App() {
           setIsAddItemOpen(true);
         }}
         onOpenGeneratorModal={() => setActiveView('generator')}
+        onGoHome={() => setActiveView('home')}
         onLockVault={handleLockVault}
         autoLockTimeRemaining={autoLockSecondsLeft}
         settings={settings}
         securityReport={securityReport}
         itemCount={items.length}
-        onOpenAutoFillModal={() => setIsAutoFillModalOpen(true)}
         activeVaultId={activeVaultId}
-        onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+        onOpenMobileNav={() => setIsMobileNavOpen(true)}
       />
 
       {/* Main Body */}
@@ -536,13 +721,45 @@ export default function App() {
           activeVaultId={activeVaultId}
           onChangeVault={handleChangeVault}
           onOpenOnboarding={() => setIsOnboardingOpen(true)}
-          isMobileOpen={isMobileSidebarOpen}
-          onCloseMobile={() => setIsMobileSidebarOpen(false)}
+          isMobileOpen={isMobileNavOpen}
+          onCloseMobile={() => setIsMobileNavOpen(false)}
         />
 
         {/* Main View Area */}
-        <main className={`flex-1 p-4 lg:p-6 overflow-y-auto min-w-0 ${activeTheme.bgMain}`}>
-          <AnimatePresence mode="wait">
+        <main className={`flex-1 px-4 py-5 lg:px-8 lg:py-7 overflow-y-auto min-w-0 ${activeTheme.bgMain}`}>
+          {/* Enter-only page transitions: AnimatePresence mode="wait" could get stuck
+              mid-exit on fast navigation and leave the page blank */}
+          <>
+            {/* HOME */}
+            {activeView === 'home' && (
+              <motion.div
+                key="home"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+              >
+                <HomeView
+                  settings={settings}
+                  items={items}
+                  report={securityReport}
+                  vaultName={tr(VAULT_DISPLAY_NAMES[activeVaultId] || "Pessoal")}
+                  onNavigate={(view, category) => {
+                    setActiveView(view);
+                    if (category) setActiveCategory(category);
+                  }}
+                  onOpenAddItem={() => {
+                    setEditingItem(null);
+                    setIsAddItemOpen(true);
+                  }}
+                  onOpenBrowserImport={openBrowserImport}
+                  onOpenProtectionGuide={() => setIsOnboardingOpen(true)}
+                  onStartTour={() => setIsTourOpen(true)}
+                  onSelectItem={item => setSelectedItem(item)}
+                />
+              </motion.div>
+            )}
+
             {/* ITEMS LIST VIEW */}
             {activeView === 'items' && (
               <motion.div
@@ -556,11 +773,13 @@ export default function App() {
                   items={filteredItems}
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
+                  searchInputRef={searchInputRef}
                   onSelectItem={item => setSelectedItem(item)}
                   onToggleFavorite={handleToggleFavorite}
                   onCopyText={handleCopyText}
                   copiedId={copiedId}
                   settings={settings}
+                  onOpenBrowserImport={openBrowserImport}
                   onOpenAddItem={() => {
                     setEditingItem(null);
                     setIsAddItemOpen(true);
@@ -589,11 +808,9 @@ export default function App() {
                     setEditingItem(category ? ({ category } as any) : null);
                     setIsAddItemOpen(true);
                   }}
-                  onOpenAutoFillModal={() => setIsAutoFillModalOpen(true)}
                   onSelectView={v => setActiveView(v as any)}
-                  onOnlineBreachResults={ids =>
-                    setOnlineLeakedIds(prev => new Set([...prev, ...ids]))
-                  }
+                  onOpenBrowserImport={openBrowserImport}
+                  onOnlineBreachResults={ids => setOnlineLeakedIds(prev => new Set([...prev, ...ids]))}
                 />
               </motion.div>
             )}
@@ -653,6 +870,8 @@ export default function App() {
                   masterKey={session.masterKey}
                   salt={session.salt}
                   onImportItems={handleImportItems}
+                  onAfterImport={() => !session.isDuressMode && sync.notifyLocalChange()}
+                  onOpenBrowserImport={openBrowserImport}
                   settings={settings}
                 />
               </motion.div>
@@ -676,34 +895,40 @@ export default function App() {
                   onOpenCertWizard={() => setActiveView('certificates')}
                   onChangeMasterPassword={() => setIsChangeMasterPassModalOpen(true)}
                   onLockVault={handleLockVault}
-                  onOpenAutoFillModal={() => setIsAutoFillModalOpen(true)}
+                  sync={session.isDuressMode ? undefined : sync}
                 />
               </motion.div>
             )}
-          </AnimatePresence>
+          </>
         </main>
 
       </div>
 
       {/* Bottom Status Footer Bar */}
-      <footer className={`h-10 ${activeTheme.bgFooter} border-t ${activeTheme.borderMain} px-6 lg:px-8 flex items-center justify-between text-[10px] ${activeTheme.textMuted} uppercase tracking-widest font-bold font-mono shrink-0 transition-colors`}>
-        <div className="flex items-center gap-6">
-          <span className={`flex items-center gap-1.5 ${activeTheme.textSecondary}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${activeAccent.bgBtn} animate-pulse`} />
-            Database: Local Encrypted
+      <footer className={`h-8 ${activeTheme.bgFooter} border-t ${activeTheme.borderMain} px-4 lg:px-6 flex items-center justify-between text-xs ${activeTheme.textMuted} shrink-0`}>
+        <span className="flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          {/* Same text in duress mode: the decoy must look exactly like the real vault */}
+          <span className="hidden sm:inline">{tr("Criptografado neste dispositivo")}</span>
+          <span className="sm:hidden">{tr("Criptografado")}</span>
+        </span>
+        {/* Sync only surfaces here when it needs a click; a quiet "synced" label
+            would be missing in duress mode and give the decoy away */}
+        {['needs-permission', 'needs-link', 'error'].includes(sync.status) && (
+          <button
+            onClick={() => setActiveView('settings')}
+            className="flex items-center gap-1.5 text-[#D8B65C] hover:underline underline-offset-2 cursor-pointer"
+          >
+            <AlertCircle className="w-3.5 h-3.5" />
+            {sync.status === 'needs-permission' ? tr("Sincronização pausada: permitir acesso") : sync.status === 'needs-link' ? tr("Vincular aparelhos") : tr("Erro na sincronização")}
+          </button>
+        )}
+        {settings.autoLockMinutes > 0 && (
+          <span className={`flex items-center gap-1.5 tabular-nums ${autoLockSecondsLeft <= 30 ? 'text-[#E0533D]' : ''}`}>
+            <Lock className="w-3.5 h-3.5" />
+            {tr("Bloqueia em")} {Math.floor(autoLockSecondsLeft / 60)}:{(autoLockSecondsLeft % 60).toString().padStart(2, '0')}
           </span>
-          <span className={`hidden sm:inline-block ${activeTheme.textMuted}`}>|</span>
-          <span className={`hidden sm:inline-flex items-center gap-1 ${activeTheme.textMuted}`}>
-            Network: Isolated (Offline Vault)
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          {settings.autoLockMinutes > 0 && (
-            <span className={activeTheme.textMuted}>
-              Auto-lock em: <span className={`${activeAccent.textAccent} font-bold`}>{Math.floor(autoLockSecondsLeft / 60)}:{(autoLockSecondsLeft % 60).toString().padStart(2, '0')}</span>
-            </span>
-          )}
-        </div>
+        )}
       </footer>
 
       {/* ALL MODALS */}
@@ -793,6 +1018,7 @@ export default function App() {
         masterKey={session.masterKey}
         salt={session.salt}
         onImportItems={handleImportItems}
+        onAfterImport={() => !session.isDuressMode && sync.notifyLocalChange()}
       />
 
       {/* Categories and Tags Manager Modal */}
@@ -804,17 +1030,6 @@ export default function App() {
         items={items}
       />
 
-      {/* Auto-Fill Companion Assistant Modal */}
-      <AutoFillCompanionModal
-        isOpen={isAutoFillModalOpen}
-        onClose={() => setIsAutoFillModalOpen(false)}
-        vaultItems={items}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
-        onCopyText={handleCopyText}
-        isUnlocked={session.isUnlocked}
-      />
-
       {/* Change Master Password Modal */}
       <ChangeMasterPasswordModal
         isOpen={isChangeMasterPassModalOpen}
@@ -823,7 +1038,49 @@ export default function App() {
         settings={settings}
       />
 
+      {/* Import passwords exported from a browser (CSV) */}
+      <BrowserImportModal
+        isOpen={isBrowserImportOpen}
+        onClose={() => setIsBrowserImportOpen(false)}
+        existingItems={importExisting}
+        defaultVault={activeVaultId as VaultId}
+        settings={settings}
+        onImport={handleImportToVaults}
+        onShowItems={() => {
+          setActiveView('items');
+          setActiveCategory('all');
+          setSearchQuery('');
+        }}
+      />
+
       {/* Onboarding Visual Zero-Knowledge Modal */}
+      <LanguagePicker
+        isOpen={isLanguagePickerOpen}
+        settings={settings}
+        onPick={language => {
+          const updated = { ...settings, language, languageChosen: true };
+          setSettings(updated);
+          saveVaultSettings(updated);
+          setIsLanguagePickerOpen(false);
+          if (!updated.tourCompleted) setTimeout(() => setIsTourOpen(true), 500);
+        }}
+      />
+
+      <GuidedTour
+        isOpen={isTourOpen}
+        steps={buildTourSteps(settings.autoLockMinutes)}
+        settings={settings}
+        onFinish={() => {
+          setIsTourOpen(false);
+          if (!settings.tourCompleted) {
+            const updated = { ...settings, tourCompleted: true };
+            setSettings(updated);
+            saveVaultSettings(updated);
+          }
+        }}
+        onOpenProtectionGuide={() => setIsOnboardingOpen(true)}
+      />
+
       <ZeroKnowledgeOnboardingModal
         isOpen={isOnboardingOpen}
         onClose={() => setIsOnboardingOpen(false)}

@@ -15,6 +15,8 @@ import {
 import { generateTotpSecret, getTotpAuthUri, verifyTOTP } from '../lib/totp';
 import { VaultSettings } from '../types';
 import { getTheme, getAccent } from '../lib/theme';
+import { confirmDialog } from './DialogHost';
+import { tr } from '../lib/i18n';
 
 interface TwoFactorSetupModalProps {
   isOpen: boolean;
@@ -38,7 +40,7 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
   if (!isOpen) return null;
 
   const activeTheme = getTheme(settings?.theme);
-  const activeAccent = getAccent(settings?.accentColor);
+  const activeAccent = getAccent(settings?.accentColor, getTheme(settings?.theme).isLight);
 
   const [secret, setSecret] = useState(currentSecret || generateTotpSecret());
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -79,7 +81,7 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
       setTestSuccess(true);
       onSave2FA(secret, backupCodes);
     } else {
-      setErrorMsg('Código incorreto. Certifique-se que o horário do dispositivo esteja sincronizado.');
+      setErrorMsg(tr("Código incorreto. Certifique-se que o horário do dispositivo esteja sincronizado."));
     }
   };
 
@@ -106,8 +108,8 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
               <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <h3 className={`text-base font-bold ${activeTheme.textPrimary}`}>Google Authenticator (2FA)</h3>
-              <p className={`text-xs ${activeTheme.textMuted} font-mono`}>Autenticação em duas etapas TOTP (RFC 6238)</p>
+              <h3 className={`text-base font-bold ${activeTheme.textPrimary}`}>{tr("Google Authenticator (2FA)")}</h3>
+              <p className={`text-xs ${activeTheme.textMuted}`}>{tr("Autenticação em duas etapas TOTP (RFC 6238)")}</p>
             </div>
           </div>
           <button onClick={onClose} className={`p-2 rounded-xl ${activeTheme.bgInput} ${activeTheme.hoverBg} ${activeTheme.textSecondary} border ${activeTheme.borderMain} transition-colors cursor-pointer`}>
@@ -120,15 +122,15 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
           
           {/* Status Badge */}
           <div className={`flex items-center justify-between p-3 ${activeTheme.bgCardInner} rounded-2xl border ${activeTheme.borderInner} text-xs`}>
-            <span className={activeTheme.textMuted}>Status da Autenticação de 2 Fatores:</span>
+            <span className={activeTheme.textMuted}>{tr("Status da Autenticação de 2 Fatores:")}</span>
             <span
-              className={`font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+              className={`font-bold px-2.5 py-0.5 rounded-full border ${
                 isEnabled
                   ? `${activeAccent.badgeBg} ${activeAccent.textAccent} ${activeAccent.borderAccent}`
                   : `${activeTheme.bgInput} ${activeTheme.textMuted} ${activeTheme.borderMain}`
               }`}
             >
-              {isEnabled ? '2FA ATIVADO' : '2FA DESATIVADO'}
+              {isEnabled ? tr("2FA ATIVADO") : tr("2FA DESATIVADO")}
             </span>
           </div>
 
@@ -144,23 +146,23 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
             {qrCodeDataUrl ? (
               <img
                 src={qrCodeDataUrl}
-                alt="QR Code Google Authenticator"
+                alt={tr("QR Code Google Authenticator")}
                 className={`w-36 h-36 rounded-xl border ${activeTheme.borderMain} shadow-md shrink-0`}
               />
             ) : (
               <div className={`w-36 h-36 rounded-xl ${activeTheme.bgInput} border ${activeTheme.borderMain} flex items-center justify-center ${activeTheme.textMuted}`}>
-                Carregando...
+                {tr("Carregando...")}
               </div>
             )}
 
             <div className={`space-y-2 text-xs ${activeTheme.textSecondary} min-w-0 flex-1`}>
-              <h4 className={`font-semibold ${activeTheme.textPrimary}`}>1. Escaneie no aplicativo</h4>
+              <h4 className={`font-semibold ${activeTheme.textPrimary}`}>{tr("1. Escaneie no aplicativo")}</h4>
               <p className={`text-[11px] ${activeTheme.textMuted}`}>
-                Abra o Google Authenticator ou Authy no seu celular e escaneie a imagem QR acima.
+                {tr("Abra o Google Authenticator ou Authy no seu celular e escaneie a imagem QR acima.")}
               </p>
 
               <div className="pt-1">
-                <span className={`text-[10px] ${activeTheme.textMuted} uppercase font-mono block`}>Ou digite o código manualmente:</span>
+                <span className={`text-xs ${activeTheme.textMuted} block`}>{tr("Ou digite o código manualmente:")}</span>
                 <div className={`flex items-center justify-between ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-lg p-2 font-mono ${activeAccent.textAccent} text-xs mt-1`}>
                   <span className="truncate">{secret}</span>
                   <button onClick={handleCopySecret} className={`${activeTheme.textMuted} hover:${activeAccent.textAccent} p-1 shrink-0 ml-2 cursor-pointer`}>
@@ -173,7 +175,7 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
 
           {/* Verification Form */}
           <form onSubmit={handleVerifyCode} className="space-y-3 pt-2">
-            <h4 className={`text-xs font-semibold ${activeTheme.textPrimary}`}>2. Digite o código de 6 dígitos para testar</h4>
+            <h4 className={`text-xs font-semibold ${activeTheme.textPrimary}`}>{tr("2. Digite o código de 6 dígitos para testar")}</h4>
 
             <div className="flex items-center gap-2">
               <input
@@ -189,7 +191,7 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
                 disabled={userCodeInput.length !== 6}
                 className={`px-4 py-3 ${activeAccent.bgBtn} ${activeAccent.bgBtnHover} disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition shrink-0 ${activeAccent.shadowAccent} cursor-pointer`}
               >
-                Validar Código
+                {tr("Validar Código")}
               </button>
             </div>
           </form>
@@ -199,13 +201,13 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
             <div className={`p-4 ${activeAccent.badgeBg} border ${activeAccent.borderAccent} rounded-2xl space-y-3 text-xs`}>
               <div className={`flex items-center gap-2 ${activeAccent.textAccent} font-semibold`}>
                 <CheckCircle2 className={`w-5 h-5 ${activeAccent.textAccent}`} />
-                <span>Google Authenticator Validado e Ativado com Sucesso!</span>
+                <span>{tr("Google Authenticator Validado e Ativado com Sucesso!")}</span>
               </div>
 
               <div className="space-y-1">
-                <span className={`${activeTheme.textPrimary} font-semibold`}>Códigos de Emergência / Backup:</span>
+                <span className={`${activeTheme.textPrimary} font-semibold`}>{tr("Códigos de Emergência / Backup:")}</span>
                 <p className={`text-[11px] ${activeTheme.textMuted}`}>
-                  Guarde estes códigos em local seguro. Eles permitem o acesso caso perca o celular:
+                  {tr("Guarde estes códigos em local seguro. Eles permitem o acesso caso perca o celular:")}
                 </p>
                 <div className={`grid grid-cols-3 gap-2 font-mono text-xs ${activeAccent.textAccent} ${activeTheme.bgInput} p-2.5 rounded-xl border ${activeTheme.borderMain}`}>
                   {backupCodes.map((code, idx) => (
@@ -222,22 +224,22 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
         <div className={`p-4 border-t ${activeTheme.borderMain} ${activeTheme.bgCardInner} flex items-center justify-between`}>
           {isEnabled ? (
             <button
-              onClick={() => {
-                if (confirm('Deseja desativar a autenticação de 2 fatores do Google Authenticator?')) {
+              onClick={async () => {
+                if (await confirmDialog({ title: tr("Desativar a verificação em duas etapas?"), message: tr("O cofre passará a abrir só com a senha mestra."), confirmLabel: tr("Desativar"), danger: true })) {
                   onDisable2FA();
                   onClose();
                 }
               }}
               className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl text-xs transition cursor-pointer shadow-sm"
             >
-              Desativar 2FA
+              {tr("Desativar 2FA")}
             </button>
           ) : (
             <button
               onClick={handleRegenerateSecret}
-              className={`text-xs ${activeTheme.textMuted} hover:${activeTheme.textPrimary} flex items-center gap-1 font-mono cursor-pointer`}
+              className={`text-xs ${activeTheme.textMuted} hover:${activeTheme.textPrimary} flex items-center gap-1 cursor-pointer`}
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Gerar Novo Chaveiro
+              <RefreshCw className="w-3.5 h-3.5" /> {tr("Gerar Novo Chaveiro")}
             </button>
           )}
 
@@ -245,7 +247,7 @@ export const TwoFactorSetupModal: React.FC<TwoFactorSetupModalProps> = ({
             onClick={onClose}
             className={`px-5 py-2 ${activeTheme.bgInput} ${activeTheme.hoverBg} ${activeTheme.textPrimary} border ${activeTheme.borderMain} text-xs font-semibold rounded-xl transition cursor-pointer`}
           >
-            Concluído
+            {tr("Concluído")}
           </button>
         </div>
 

@@ -39,9 +39,9 @@ export const DEFAULT_SETTINGS: VaultSettings = {
   autoLockMinutes: 5,
   clipboardClearSeconds: 20,
   selfDestructAttempts: 5,
-  theme: 'dark',
-  accentColor: 'emerald',
-  quickActionIds: ['generate_pass', 'add_login', 'add_card', 'autofill_sim', 'audit_view', 'cert_view', 'backup_view'],
+  theme: 'beige',
+  accentColor: 'amber',
+  quickActionIds: ['generate_pass', 'add_login', 'add_card', 'browser_import', 'audit_view', 'cert_view', 'backup_view'],
   enableOnlineFavicons: true,
 };
 
@@ -238,11 +238,43 @@ export function saveVaultSettings(settings: VaultSettings): void {
 /**
  * Perform Security Audit on all items
  */
+// Weight of each problem, per password. An item counts only its worst problem.
+export const HEALTH_PENALTY = { leaked: 1, weak: 0.6, reused: 0.4 } as const;
+
+/**
+ * 100 minus the share of passwords with problems, weighted by severity.
+ * Cards and notes have no password and don't affect the score, so a vault with
+ * no problems is always 100. Any leaked password caps the score at 79, and any
+ * weak/reused one at 89, so a problem is never shown as a "green" result.
+ */
+export function computeHealthScore(
+  items: VaultItem[],
+  issues: { weakItems: VaultItem[]; reusedItems: VaultItem[]; leakedItems: VaultItem[] }
+): number {
+  const withPassword = items.filter(i => i.password);
+  if (withPassword.length === 0) return 100;
+
+  const leaked = new Set(issues.leakedItems.map(i => i.id));
+  const weak = new Set(issues.weakItems.map(i => i.id));
+  const reused = new Set(issues.reusedItems.map(i => i.id));
+
+  const penalty = withPassword.reduce((sum, i) => {
+    if (leaked.has(i.id)) return sum + HEALTH_PENALTY.leaked;
+    if (weak.has(i.id)) return sum + HEALTH_PENALTY.weak;
+    if (reused.has(i.id)) return sum + HEALTH_PENALTY.reused;
+    return sum;
+  }, 0);
+
+  let score = Math.round(100 - (100 * penalty) / withPassword.length);
+  if (leaked.size > 0) score = Math.min(score, 79);
+  else if (weak.size > 0 || reused.size > 0) score = Math.min(score, 89);
+  return Math.max(0, score);
+}
+
 export function generateSecurityAuditReport(
   items: VaultItem[],
   onlineLeakedIds?: Set<string>
 ): SecurityReport {
-  let totalScoreSum = 0;
   const weakItems: VaultItem[] = [];
   const leakedItems: VaultItem[] = [];
   const oldItems: VaultItem[] = [];
@@ -253,7 +285,6 @@ export function generateSecurityAuditReport(
   items.forEach(item => {
     if (item.password) {
       const strength = calculatePasswordStrength(item.password);
-      totalScoreSum += strength.score;
 
       if (strength.score < 50) {
         weakItems.push(item);
@@ -268,8 +299,6 @@ export function generateSecurityAuditReport(
         passwordCounts[item.password] = [];
       }
       passwordCounts[item.password].push(item);
-    } else {
-      totalScoreSum += 80; // Card or note without direct password
     }
 
     if (item.updatedAt < ninetyDaysAgo) {
@@ -285,15 +314,7 @@ export function generateSecurityAuditReport(
   });
 
   const total = items.length;
-  const avgScore = total > 0 ? Math.round(totalScoreSum / total) : 100;
-
-  // Deduct for weak, leaked, or reused passwords
-  let finalScore = avgScore;
-  if (weakItems.length > 0) finalScore -= Math.min(25, weakItems.length * 8);
-  if (reusedItems.length > 0) finalScore -= Math.min(25, reusedItems.length * 8);
-  if (leakedItems.length > 0) finalScore -= Math.min(30, leakedItems.length * 15);
-
-  finalScore = Math.max(0, Math.min(100, finalScore));
+  const finalScore = computeHealthScore(items, { weakItems, reusedItems, leakedItems });
 
   return {
     score: finalScore,
@@ -316,7 +337,7 @@ export function generateSecurityAuditReport(
 export async function changeMasterPassword(
   currentPassword: string,
   newPassword: string,
-  currentItems: VaultItem[],
+  _currentItems: VaultItem[],
   currentSalt: Uint8Array
 ): Promise<{ masterKey: CryptoKey; salt: Uint8Array }> {
   // 1. Verify current password
@@ -334,33 +355,96 @@ export async function changeMasterPassword(
     }
   }
 
-  // 2. Generate new salt & derive new masterKey
+  // 2. New salt + key, then re-encrypt every vault (not just the open one)
   const newSalt = getRandomBytes(16);
-  let binary = '';
-  for (let i = 0; i < newSalt.length; i++) {
-    binary += String.fromCharCode(newSalt[i]);
-  }
-  localStorage.setItem(STORAGE_KEYS.VAULT_SALT, btoa(binary));
-
   const newMasterKey = await deriveMasterKey(newPassword, newSalt);
-
-  // 3. Save new verifier
-  const newVerifier = await encryptVaultData({ check: 'VAULT_VERIFIED_OK' }, newMasterKey, newSalt);
-  localStorage.setItem(STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(newVerifier));
-
-  // 4. Re-encrypt current vault items with new key
-  await saveEncryptedVaultItems(currentItems, newMasterKey, newSalt);
+  await rekeyLocalVaults(currentKey, newMasterKey, newSalt);
 
   return { masterKey: newMasterKey, salt: newSalt };
+}
+
+/* ----------------------------------------------------- multi-vault helpers */
+
+export const VAULT_IDS = ['pessoal', 'trabalho', 'compartilhado'] as const;
+export type VaultId = (typeof VAULT_IDS)[number];
+
+const vaultStorageKey = (vaultId: string) =>
+  vaultId && vaultId !== 'pessoal' ? `${STORAGE_KEYS.VAULT_ENCRYPTED}_${vaultId}` : STORAGE_KEYS.VAULT_ENCRYPTED;
+
+export const saltToBase64 = (salt: Uint8Array): string => {
+  let binary = '';
+  for (let i = 0; i < salt.length; i++) binary += String.fromCharCode(salt[i]);
+  return btoa(binary);
+};
+
+/** Decrypt every vault on this device. Vaults that were never created come back empty. */
+export async function loadAllVaults(masterKey: CryptoKey): Promise<Record<VaultId, VaultItem[]>> {
+  const out = {} as Record<VaultId, VaultItem[]>;
+  for (const id of VAULT_IDS) out[id] = await loadEncryptedVaultItems(masterKey, id);
+  return out;
+}
+
+export async function saveAllVaults(
+  vaults: Partial<Record<VaultId, VaultItem[]>>,
+  masterKey: CryptoKey,
+  salt: Uint8Array
+): Promise<void> {
+  for (const id of VAULT_IDS) {
+    const items = vaults[id];
+    if (items) await saveEncryptedVaultItems(items, masterKey, salt, id);
+  }
+}
+
+/**
+ * Re-encrypt everything on this device under a new key + salt: all vaults and the
+ * password verifier. Everything is decrypted first, so a wrong old key aborts
+ * before anything is overwritten.
+ */
+export async function rekeyLocalVaults(oldKey: CryptoKey, newKey: CryptoKey, newSalt: Uint8Array): Promise<void> {
+  const vaults = await loadAllVaults(oldKey);
+  const verifier = await encryptVaultData({ check: 'VAULT_VERIFIED_OK' }, newKey, newSalt);
+
+  localStorage.setItem(STORAGE_KEYS.VAULT_SALT, saltToBase64(newSalt));
+  localStorage.setItem(STORAGE_KEYS.VAULT_SALT_VERIFIER, JSON.stringify(verifier));
+  for (const id of VAULT_IDS) {
+    // Don't materialize vaults that never existed
+    if (vaults[id].length > 0 || localStorage.getItem(vaultStorageKey(id))) {
+      await saveEncryptedVaultItems(vaults[id], newKey, newSalt, id);
+    }
+  }
+}
+
+/* ------------------------------------------------------------ tombstones */
+// Deleted item ids with the time of deletion, so a sync can tell "deleted here"
+// apart from "never existed here". Ids are random UUIDs and reveal nothing.
+
+export type Tombstones = Record<string, number>;
+const TOMBSTONE_TTL_MS = 180 * 86_400_000;
+const tombstoneKey = (vaultId: string) => `vaultsecure_tombstones_${vaultId || 'pessoal'}`;
+
+export function loadTombstones(vaultId: string): Tombstones {
+  try {
+    const raw = JSON.parse(localStorage.getItem(tombstoneKey(vaultId)) || '{}') as Tombstones;
+    const cutoff = Date.now() - TOMBSTONE_TTL_MS;
+    return Object.fromEntries(Object.entries(raw).filter(([, t]) => t > cutoff));
+  } catch {
+    return {};
+  }
+}
+
+export function saveTombstones(vaultId: string, tombstones: Tombstones): void {
+  localStorage.setItem(tombstoneKey(vaultId), JSON.stringify(tombstones));
+}
+
+export function recordDeletion(vaultId: string, itemId: string, at = Date.now()): void {
+  saveTombstones(vaultId, { ...loadTombstones(vaultId), [itemId]: at });
 }
 
 /**
  * Self-destruct: Clear all local storage data completely
  */
 export function clearAllVaultData(): void {
-  localStorage.removeItem(STORAGE_KEYS.VAULT_ENCRYPTED);
-  localStorage.removeItem(STORAGE_KEYS.VAULT_SETTINGS);
-  localStorage.removeItem(STORAGE_KEYS.VAULT_SALT);
-  localStorage.removeItem(STORAGE_KEYS.VAULT_SALT_VERIFIER);
-  localStorage.removeItem(STORAGE_KEYS.IS_INITIALIZED);
+  Object.keys(localStorage)
+    .filter(key => key.startsWith('vaultsecure_'))
+    .forEach(key => localStorage.removeItem(key));
 }

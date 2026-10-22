@@ -8,3 +8,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Launch video build (BRAG)
+brag-output/

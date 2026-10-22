@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   FileCheck,
   Upload,
-  Sparkles,
+  FilePlus2,
   X,
   Trash2,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DigitalCertConfig, VaultSettings } from '../types';
 import { generateTestDigitalCert, parseCertPemFile } from '../lib/pki';
+import { tr } from '../lib/i18n';
 
 interface DigitalCertSetupModalProps {
   isOpen: boolean;
@@ -96,8 +97,8 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
               <FileCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-100">Gerenciador de Certificados Digitais</h3>
-              <p className="text-xs text-slate-400 font-mono">Infraestrutura PKI & Validação de Assinatura X.509</p>
+              <h3 className="text-base font-bold text-slate-100">{tr("Gerenciador de Certificados Digitais")}</h3>
+              <p className="text-xs text-slate-400">Infraestrutura PKI & Validação de Assinatura X.509</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-slate-200">
@@ -112,10 +113,10 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
           <label className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 cursor-pointer hover:border-slate-700 transition">
             <div className="space-y-0.5">
               <span className="text-xs font-semibold text-slate-200 block">
-                Exigir Certificado Digital no Acesso ao Cofre
+                {tr("Exigir Certificado Digital no Acesso ao Cofre")}
               </span>
               <span className="text-[11px] text-slate-400 block">
-                Exige a validação da assinatura digital privada para autorizar o desbloqueio.
+                {tr("Exige a validação da assinatura digital privada para autorizar o desbloqueio.")}
               </span>
             </div>
             <input
@@ -136,14 +137,14 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
               {isGenerating ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <FilePlus2 className="w-4 h-4 text-cyan-400" />
               )}
-              <span>Emitir Certificado Dev (RSA-2048)</span>
+              <span>{tr("Emitir Certificado Dev (RSA-2048)")}</span>
             </button>
 
             <label className="p-3 bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-slate-200 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition">
               <Upload className="w-4 h-4 text-indigo-400" />
-              <span>Importar Certificado (.pem/.crt)</span>
+              <span>{tr("Importar Certificado (.pem/.crt)")}</span>
               <input
                 type="file"
                 accept=".pem,.crt,.cer,.pfx,.p12"
@@ -155,16 +156,16 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
 
           {/* Registered Certificates List */}
           <div className="space-y-3 pt-2">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase font-mono">
-              Certificados Digitais Cadastrados ({certificates.length})
+            <h4 className="text-xs font-semibold text-slate-400">
+              {tr("Certificados Digitais Cadastrados (")}{certificates.length})
             </h4>
 
             {certificates.length === 0 ? (
               <div className="p-8 bg-slate-950 rounded-2xl border border-slate-800 text-center text-xs text-slate-500 space-y-1">
                 <FileCheck className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                <p>Nenhum certificado digital foi adicionado ainda.</p>
+                <p>{tr("Nenhum certificado digital foi adicionado ainda.")}</p>
                 <p className="text-[11px] text-slate-600">
-                  Clique no botão acima para emitir um certificado de teste ou importar o seu arquivo PEM.
+                  {tr("Clique no botão acima para emitir um certificado de teste ou importar o seu arquivo PEM.")}
                 </p>
               </div>
             ) : (
@@ -172,7 +173,7 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
                 {certificates.map(cert => (
                   <div
                     key={cert.id}
-                    className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 text-xs font-mono text-slate-300 relative"
+                    className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 text-xs text-slate-300 relative"
                   >
                     <div className="flex items-start justify-between">
                       <div className="space-y-0.5">
@@ -183,7 +184,7 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
                       <button
                         onClick={() => handleDeleteCert(cert.id)}
                         className="text-slate-500 hover:text-red-400 p-1"
-                        title="Remover Certificado"
+                        title={tr("Remover Certificado")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -199,7 +200,7 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
                         <span className="text-slate-300">{cert.keyType}</span>
                       </div>
                       <div className="col-span-2">
-                        <span className="text-slate-600 block">Fingerprint / Thumbprint:</span>
+                        <span className="text-slate-600 block">{tr("Fingerprint / Thumbprint:")}</span>
                         <span className="text-slate-300 truncate block">{cert.thumbprint}</span>
                       </div>
                     </div>
@@ -217,7 +218,7 @@ export const DigitalCertSetupModal: React.FC<DigitalCertSetupModalProps> = ({
             onClick={onClose}
             className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition"
           >
-            Concluído
+            {tr("Concluído")}
           </button>
         </div>
 
