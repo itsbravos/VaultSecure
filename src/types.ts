@@ -92,11 +92,12 @@ export interface VaultSettings {
   customCategories?: CustomCategory[];
   managedTags?: string[];
   quickActionIds?: string[];
+  tourCompleted?: boolean; // first-run guided tour was finished or skipped
+  language?: 'pt' | 'en'; // unset = English
+  languageChosen?: boolean; // asked once, right after the first unlock
 
   // Auto-Fill Desktop Companion & Form Listener Settings
-  enableAutoFillCompanion?: boolean;
   autoFillAutoSubmit?: boolean;
-  autoFillAskMasterPass?: boolean;
 
   // Privacy & Network Settings
   enableOnlineFavicons?: boolean;

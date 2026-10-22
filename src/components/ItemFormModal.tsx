@@ -6,7 +6,7 @@ import {
   FileText,
   FileCheck,
   Code2,
-  Sparkles,
+  Dices,
   Plus,
   Trash2,
   Eye,
@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import { VaultItem, ItemCategory, CustomField, VaultSettings, VaultAttachment } from '../types';
 import { calculatePasswordStrength, generatePassword, isLocalLeakedPassword } from '../lib/crypto';
-import { getAccent, getTheme } from '../lib/theme';
+import { getAccent, getTheme, strengthTone } from '../lib/theme';
+import { alertDialog } from './DialogHost';
+import { tr } from '../lib/i18n';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -73,7 +75,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
     Array.from(files).forEach((file: File) => {
       if (file.size > 3 * 1024 * 1024) {
-        alert('O arquivo excede o limite recomendado de 3MB para anexos do cofre.');
+        alertDialog(tr("\"{p0}\" é grande demais", { p0: file.name }), tr("Anexos podem ter no máximo 3 MB."));
         return;
       }
       const reader = new FileReader();
@@ -173,7 +175,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const passStrength = password ? calculatePasswordStrength(password) : null;
 
   const activeTheme = getTheme(settings?.theme);
-  const activeAccent = getAccent(settings?.accentColor);
+  const activeAccent = getAccent(settings?.accentColor, getTheme(settings?.theme).isLight);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in select-none">
@@ -183,7 +185,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         <div className={`p-5 border-b ${activeTheme.borderMain} ${activeTheme.bgCardInner} flex items-center justify-between`}>
           <h3 className={`text-sm font-bold ${activeTheme.textPrimary} flex items-center gap-2`}>
             <Key className={`w-4 h-4 ${activeAccent.textAccent}`} />
-            {initialItem ? 'Editar Credencial' : 'Novo Registro no Cofre'}
+            {initialItem ? tr("Editar Credencial") : tr("Novo Registro no Cofre")}
           </h3>
           <button onClick={onClose} className={`p-2 rounded-lg ${activeTheme.bgInput} ${activeTheme.hoverBg} ${activeTheme.textSecondary} transition-colors border ${activeTheme.borderMain}`}>
             <X className="w-4 h-4" />
@@ -195,13 +197,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           
           {/* Category Selector */}
           <div className="space-y-1.5">
-            <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Categoria do Registro</label>
+            <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Categoria do Registro")}</label>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs font-medium">
               {[
-                { id: 'login', label: 'Login', icon: Key },
-                { id: 'card', label: 'Cartão', icon: CreditCard },
-                { id: 'note', label: 'Nota', icon: FileText },
-                { id: 'certificate', label: 'Certificado', icon: FileCheck },
+                { id: 'login', label: tr("Login"), icon: Key },
+                { id: 'card', label: tr("Cartão"), icon: CreditCard },
+                { id: 'note', label: tr("Nota"), icon: FileText },
+                { id: 'certificate', label: tr("Certificado"), icon: FileCheck },
                 { id: 'api_key', label: 'API/SSH', icon: Code2 },
                 ...(settings?.customCategories || []).map(cc => ({
                   id: cc.id,
@@ -224,7 +226,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                     }`}
                   >
                     <Icon className="w-4 h-4 mb-1" />
-                    <span className="text-[11px] font-mono truncate max-w-[80px]">{cat.label}</span>
+                    <span className="text-[11px] truncate max-w-[80px]">{cat.label}</span>
                   </button>
                 );
               })}
@@ -233,13 +235,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
           {/* Title */}
           <div className="space-y-1.5">
-            <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Título / Nome do Serviço</label>
+            <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Título / Nome do Serviço")}</label>
             <input
               type="text"
               required
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Ex: Conta Google, Banco Itaú, AWS SSH"
+              placeholder={tr("Ex: Conta Google, Banco Itaú, AWS SSH")}
               className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} ${activeAccent.borderAccent}`}
             />
           </div>
@@ -248,24 +250,24 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           {(category === 'login' || category === 'api_key') && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Nome de Usuário</label>
+                <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Nome de Usuário")}</label>
                 <input
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="ex: admin, usuario123"
-                  className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono`}
+                  placeholder={tr("ex: admin, usuario123")}
+                  className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>E-mail de Login</label>
+                <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("E-mail de Login")}</label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="ex: usuario@email.com"
-                  className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono`}
+                  placeholder={tr("ex: usuario@email.com")}
+                  className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
                 />
               </div>
             </div>
@@ -275,13 +277,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           {category !== 'note' && (
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
-                <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Senha / Chave Secreta</label>
+                <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Senha / Chave Secreta")}</label>
                 <button
                   type="button"
                   onClick={handleGeneratePassword}
-                  className={`text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-mono font-semibold`}
+                  className={`text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-semibold`}
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Gerar Senha Forte
+                  <Dices className="w-3.5 h-3.5 " /> {tr("Gerar senha forte")}
                 </button>
               </div>
 
@@ -303,26 +305,26 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               </div>
 
               {isLocalLeakedPassword(password) && (
-                <div className={`p-2.5 ${activeTheme.isLight ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-orange-950/90 border-orange-800 text-orange-300'} rounded-xl text-xs font-mono flex items-center justify-between`}>
+                <div className={`p-2.5 ${activeTheme.isLight ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-orange-950/90 border-orange-800 text-orange-300'} rounded-xl text-xs flex items-center justify-between`}>
                   <span className="flex items-center gap-1.5 font-bold text-[11px]">
-                    <ShieldAlert className="w-4 h-4 text-orange-500 shrink-0 animate-pulse" />
-                    ATENÇÃO: Esta senha é conhecida por ter sido vazada na internet!
+                    <ShieldAlert className="w-4 h-4 text-orange-500 shrink-0 " />
+                    {tr("ATENÇÃO: Esta senha é conhecida por ter sido vazada na internet!")}
                   </span>
                   <button
                     type="button"
                     onClick={handleGeneratePassword}
                     className={`text-[11px] font-bold ${activeTheme.isLight ? 'text-orange-900 hover:text-orange-950' : 'text-orange-200 hover:text-white'} underline shrink-0 ml-2`}
                   >
-                    Gerar Segura
+                    {tr("Gerar Segura")}
                   </button>
                 </div>
               )}
 
               {passStrength && (
                 <div className="flex items-center justify-between text-[11px] pt-0.5">
-                  <span className={`${activeTheme.textMuted} font-mono`}>Força da Senha:</span>
-                  <span className={`font-mono font-medium ${passStrength.color.split(' ')[0]}`}>
-                    {passStrength.label} ({passStrength.score}%)
+                  <span className={`${activeTheme.textMuted}`}>{tr("Força da Senha:")}</span>
+                  <span className={`font-medium ${strengthTone(passStrength.score, activeTheme.isLight)}`}>
+                    {tr(passStrength.label)} ({passStrength.score}%)
                   </span>
                 </div>
               )}
@@ -333,19 +335,19 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           {category === 'card' && (
             <div className={`space-y-3 p-3 ${activeTheme.bgCardInner} rounded-xl border ${activeTheme.borderInner}`}>
               <div className="space-y-1">
-                <label className={`text-[10px] ${activeTheme.textMuted} uppercase font-mono`}>Nome impresso no Cartão</label>
+                <label className={`text-xs ${activeTheme.textMuted}`}>{tr("Nome impresso no Cartão")}</label>
                 <input
                   type="text"
                   value={cardHolder}
                   onChange={e => setCardHolder(e.target.value)}
-                  placeholder="Ex: NOME SOBRENOME"
+                  placeholder={tr("Ex: NOME SOBRENOME")}
                   className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-lg p-2 text-xs ${activeTheme.textPrimary} font-mono`}
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="col-span-2 space-y-1">
-                  <label className={`text-[10px] ${activeTheme.textMuted} uppercase font-mono`}>Número do Cartão</label>
+                  <label className={`text-xs ${activeTheme.textMuted}`}>{tr("Número do Cartão")}</label>
                   <input
                     type="text"
                     value={cardNumber}
@@ -355,7 +357,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className={`text-[10px] ${activeTheme.textMuted} uppercase font-mono`}>Validade</label>
+                  <label className={`text-xs ${activeTheme.textMuted}`}>{tr("Validade")}</label>
                   <input
                     type="text"
                     value={cardExpiry}
@@ -371,48 +373,48 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           {/* ACCOUNT TOTP SECRET (GOOGLE AUTHENTICATOR FOR THIS SPECIFIC SERVICE) */}
           {category === 'login' && (
             <div className="space-y-1.5">
-              <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono flex items-center gap-1.5`}>
+              <label className={`text-xs font-bold ${activeTheme.textMuted} flex items-center gap-1.5`}>
                 <QrCode className={`w-3.5 h-3.5 ${activeAccent.textAccent}`} />
-                Segredo TOTP (2FA da Conta - Opcional)
+                {tr("Segredo TOTP (2FA da Conta - Opcional)")}
               </label>
               <input
                 type="text"
                 value={totpSecret}
                 onChange={e => setTotpSecret(e.target.value)}
-                placeholder="Ex: JBSWY3DPEHPK3PXP"
-                className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono uppercase`}
+                placeholder={tr("Ex: JBSWY3DPEHPK3PXP")}
+                className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
               />
-              <span className={`text-[10px] ${activeTheme.textMuted} block font-mono`}>
-                Insira a chave Base32 para que o cofre gere códigos 2FA automaticamente.
+              <span className={`text-xs ${activeTheme.textMuted} block`}>
+                {tr("Insira a chave Base32 para que o cofre gere códigos 2FA automaticamente.")}
               </span>
             </div>
           )}
 
           {/* URL */}
           <div className="space-y-1.5">
-            <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>URL / Website</label>
+            <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("URL / Website")}</label>
             <input
               type="text"
               value={url}
               onChange={e => setUrl(e.target.value)}
               placeholder="https://exemplo.com.br"
-              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono`}
+              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2.5 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
             />
           </div>
 
           {/* TAGS */}
           <div className="space-y-1.5">
-            <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Tags (Separadas por vírgula)</label>
+            <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Tags (Separadas por vírgula)")}</label>
             <input
               type="text"
               value={tagsInput}
               onChange={e => setTagsInput(e.target.value)}
-              placeholder="Pessoal, Trabalho, Importante"
-              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono`}
+              placeholder={tr("Pessoal, Trabalho, Importante")}
+              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl px-3.5 py-2 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
             />
             {settings?.managedTags && settings.managedTags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className={`text-[10px] ${activeTheme.textMuted} font-mono self-center`}>Adicionar tag rápida:</span>
+                <span className={`text-xs ${activeTheme.textMuted} self-center`}>{tr("Adicionar tag rápida:")}</span>
                 {settings.managedTags.map(mt => {
                   const currentList = tagsInput.split(',').map(t => t.trim().toLowerCase());
                   const isPresent = currentList.includes(mt.toLowerCase());
@@ -429,7 +431,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                           setTagsInput(updated);
                         }
                       }}
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                         isPresent
                           ? `${activeAccent.badgeBg} ${activeAccent.textAccent} ${activeAccent.borderAccent}`
                           : `${activeTheme.bgInput} ${activeTheme.textMuted} ${activeTheme.borderMain}`
@@ -446,13 +448,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
           {/* CUSTOM FIELDS */}
           <div className={`space-y-2 pt-2 border-t ${activeTheme.borderInner}`}>
             <div className="flex justify-between items-center">
-              <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Campos Adicionais</label>
+              <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Campos Adicionais")}</label>
               <button
                 type="button"
                 onClick={handleAddCustomField}
-                className={`text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-mono font-semibold`}
+                className={`text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-semibold`}
               >
-                <Plus className="w-3.5 h-3.5" /> Adicionar Campo
+                <Plus className="w-3.5 h-3.5" /> {tr("Adicionar Campo")}
               </button>
             </div>
 
@@ -460,25 +462,25 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               <div key={field.id} className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder="Rótulo (ex: PIN)"
+                  placeholder={tr("Rótulo (ex: PIN)")}
                   value={field.label}
                   onChange={e => {
                     const newFields = [...customFields];
                     newFields[idx].label = e.target.value;
                     setCustomFields(newFields);
                   }}
-                  className={`w-1/3 ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-2 text-xs ${activeTheme.textPrimary} font-mono`}
+                  className={`w-1/3 ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-2 text-xs ${activeTheme.textPrimary}`}
                 />
                 <input
                   type="text"
-                  placeholder="Valor"
+                  placeholder={tr("Valor")}
                   value={field.value}
                   onChange={e => {
                     const newFields = [...customFields];
                     newFields[idx].value = e.target.value;
                     setCustomFields(newFields);
                   }}
-                  className={`flex-1 ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-2 text-xs ${activeTheme.textPrimary} font-mono`}
+                  className={`flex-1 ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-2 text-xs ${activeTheme.textPrimary}`}
                 />
                 <button
                   type="button"
@@ -493,25 +495,25 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
           {/* NOTES */}
           <div className={`space-y-1.5 pt-2 border-t ${activeTheme.borderInner}`}>
-            <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono`}>Notas / Observações Criptografadas</label>
+            <label className={`text-xs font-bold ${activeTheme.textMuted}`}>{tr("Notas / Observações Criptografadas")}</label>
             <textarea
               rows={3}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Escreva anotações secretas aqui..."
-              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-3 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent} font-mono`}
+              placeholder={tr("Escreva anotações secretas aqui...")}
+              className={`w-full ${activeTheme.bgInput} border ${activeTheme.borderMain} rounded-xl p-3 text-xs ${activeTheme.textPrimary} placeholder:${activeTheme.textMuted} focus:outline-none ${activeAccent.ringAccent}`}
             />
           </div>
 
           {/* ENCRYPTED ATTACHMENTS */}
           <div className={`space-y-2 pt-2 border-t ${activeTheme.borderInner}`}>
             <div className="flex items-center justify-between">
-              <label className={`text-[10px] uppercase font-bold ${activeTheme.textMuted} tracking-wider font-mono flex items-center gap-1.5`}>
-                <Paperclip className={`w-3.5 h-3.5 ${activeAccent.textAccent}`} /> Anexos Criptografados (Documentos / Imagens)
+              <label className={`text-xs font-bold ${activeTheme.textMuted} flex items-center gap-1.5`}>
+                <Paperclip className={`w-3.5 h-3.5 ${activeAccent.textAccent}`} /> {tr("Anexos Criptografados (Documentos / Imagens)")}
               </label>
-              <label className={`cursor-pointer text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-mono font-semibold`}>
+              <label className={`cursor-pointer text-xs ${activeAccent.textAccent} hover:underline flex items-center gap-1 font-semibold`}>
                 <FileUp className="w-3.5 h-3.5" />
-                <span>Anexar Arquivo</span>
+                <span>{tr("Anexar Arquivo")}</span>
                 <input
                   type="file"
                   multiple
@@ -526,18 +528,18 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                 {attachments.map(att => (
                   <div
                     key={att.id}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border ${activeTheme.borderInner} ${activeTheme.bgCardInner} text-xs font-mono`}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border ${activeTheme.borderInner} ${activeTheme.bgCardInner} text-xs`}
                   >
                     <div className="flex items-center gap-2 overflow-hidden">
                       <Paperclip className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                       <span className={`truncate max-w-[220px] ${activeTheme.textPrimary}`}>{att.name}</span>
-                      <span className={`text-[10px] ${activeTheme.textMuted}`}>({(att.size / 1024).toFixed(1)} KB)</span>
+                      <span className={`text-xs ${activeTheme.textMuted}`}>({(att.size / 1024).toFixed(1)} {tr("KB)")}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveAttachment(att.id)}
                       className="p-1 text-slate-400 hover:text-red-400 transition-colors"
-                      title="Remover anexo"
+                      title={tr("Remover anexo")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -545,8 +547,8 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                 ))}
               </div>
             ) : (
-              <p className={`text-[11px] ${activeTheme.textMuted} font-mono italic`}>
-                Nenhum arquivo anexado. Você pode anexar fotos de RG, comprovantes ou notas em PDF de até 3MB.
+              <p className={`text-[11px] ${activeTheme.textMuted} italic`}>
+                {tr("Nenhum arquivo anexado. Você pode anexar fotos de RG, comprovantes ou notas em PDF de até 3MB.")}
               </p>
             )}
           </div>
@@ -558,13 +560,13 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               onClick={onClose}
               className={`px-4 py-2.5 rounded-xl ${activeTheme.bgInput} ${activeTheme.hoverBg} ${activeTheme.textSecondary} text-xs font-semibold border ${activeTheme.borderMain} transition-colors`}
             >
-              Cancelar
+              {tr("Cancelar")}
             </button>
             <button
               type="submit"
               className={`px-5 py-2.5 rounded-xl ${activeAccent.bgBtn} ${activeAccent.bgBtnHover} text-white text-xs font-bold ${activeAccent.shadowAccent} transition-colors cursor-pointer`}
             >
-              Salvar Criptografado
+              {tr("Salvar Criptografado")}
             </button>
           </div>
 

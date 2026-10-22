@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { getTheme, getAccent } from '../lib/theme';
 import { VaultSettings } from '../types';
+import { tr } from '../lib/i18n';
 
 interface ZeroKnowledgeOnboardingModalProps {
   isOpen: boolean;
@@ -34,86 +35,86 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const activeTheme = getTheme(settings?.theme);
-  const activeAccent = getAccent(settings?.accentColor);
+  const activeAccent = getAccent(settings?.accentColor, getTheme(settings?.theme).isLight);
 
   const SLIDES = [
     {
-      title: 'Arquitetura Zero-Knowledge & Criptografia Local',
-      subtitle: 'Suas senhas são criptografadas antes de tocar em qualquer disco.',
+      title: tr("Arquitetura Zero-Knowledge & Criptografia Local"),
+      subtitle: tr("Suas senhas são criptografadas antes de tocar em qualquer disco."),
       icon: ShieldCheck,
       color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
       bullets: [
         {
-          head: 'PBKDF2 com 250.000 iterações:',
-          desc: 'Sua Senha Mestra deriva a chave AES-256-GCM na memória do seu navegador.',
+          head: tr("PBKDF2 com 250.000 iterações:"),
+          desc: tr("Sua Senha Mestra deriva a chave AES-256-GCM na memória do seu navegador."),
         },
         {
-          head: 'O arquivo .json do cofre é indecifrável:',
-          desc: 'Se alguém copiar o arquivo do seu computador, verá apenas um amontoado aleatório de bytes.',
+          head: tr("O arquivo .json do cofre é indecifrável:"),
+          desc: tr("Se alguém copiar o arquivo do seu computador, verá apenas um amontoado aleatório de bytes."),
         },
         {
-          head: 'O aplicativo não possui servidores centrais:',
-          desc: 'Nenhuma senha é enviada para fora. Nem mesmo os desenvolvedores conseguem ver seus dados.',
+          head: tr("O aplicativo não possui servidores centrais:"),
+          desc: tr("Nenhuma senha é enviada para fora. Nem mesmo os desenvolvedores conseguem ver seus dados."),
         },
       ],
     },
     {
-      title: 'Modo Duress (Senha de Coação) & Autodestruição',
-      subtitle: 'Proteção extrema contra abordagens físicas ou coação.',
+      title: tr("Modo Duress (Senha de Coação) & Autodestruição"),
+      subtitle: tr("Proteção extrema contra abordagens físicas ou coação."),
       icon: EyeOff,
       color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
       bullets: [
         {
-          head: 'Senha de Coação (Duress):',
-          desc: 'Cadastre uma senha mestra alternativa que abre um cofre com dados inofensivos de fachada.',
+          head: tr("Senha de Coação (Duress):"),
+          desc: tr("Cadastre uma senha mestra alternativa que abre um cofre com dados inofensivos de fachada."),
         },
         {
-          head: 'Autodestruição do Cofre:',
-          desc: 'Defina para apagar o cofre local automaticamente após N tentativas erradas de senha mestra.',
+          head: tr("Autodestruição do Cofre:"),
+          desc: tr("Defina para apagar o cofre local automaticamente após N tentativas erradas de senha mestra."),
         },
         {
-          head: 'Múltiplos Cofres Isolados:',
-          desc: 'Alterne facilmente entre cofre Pessoal, de Trabalho e Compartilhado com senhas independentes.',
+          head: tr("Múltiplos Cofres Isolados:"),
+          desc: tr("Alterne facilmente entre cofre Pessoal, de Trabalho e Compartilhado com senhas independentes."),
         },
       ],
     },
     {
-      title: 'Verificação Zero-Knowledge de Vazamentos (HIBP)',
-      subtitle: 'Verifique se suas senhas vazaram na internet sem revelar suas senhas.',
+      title: tr("Verificação Zero-Knowledge de Vazamentos (HIBP)"),
+      subtitle: tr("Verifique se suas senhas vazaram na internet sem revelar suas senhas."),
       icon: RefreshCw,
       color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
       bullets: [
         {
           head: 'k-Anonymity SHA-1 Hash:',
-          desc: 'Ao testar uma senha no Have I Been Pwned, o app envia APENAS os 5 primeiros caracteres do Hash.',
+          desc: tr("Ao testar uma senha no Have I Been Pwned, o app envia APENAS os 5 primeiros caracteres do Hash."),
         },
         {
-          head: 'Sua senha real nunca trafega na rede:',
-          desc: 'A comparação final do restante do hash acontece 100% localmente na sua máquina.',
+          head: tr("Sua senha real nunca trafega na rede:"),
+          desc: tr("A comparação final do restante do hash acontece 100% localmente na sua máquina."),
         },
         {
-          head: 'Modo 100% Offline Opcional:',
-          desc: 'Você pode desativar qualquer requisição externa nas configurações de privacidade.',
+          head: tr("Modo 100% Offline Opcional:"),
+          desc: tr("Você pode desativar qualquer requisição externa nas configurações de privacidade."),
         },
       ],
     },
     {
-      title: 'Anexos Criptografados & Sincronização via Syncthing',
-      subtitle: 'Guarde documentos e sincronize entre dispositivos de forma privada.',
+      title: tr("Anexos e sincronização entre aparelhos"),
+      subtitle: tr("Guarde documentos e sincronize entre dispositivos de forma privada."),
       icon: HardDrive,
       color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
       bullets: [
         {
-          head: 'Anexos em Base64 Criptografados:',
-          desc: 'Guarde fotos de RG, contratos em PDF ou notas secretas de até 2MB junto de cada entrada.',
+          head: tr("Anexos em Base64 Criptografados:"),
+          desc: tr("Guarde fotos de RG, contratos em PDF ou notas secretas de até 2MB junto de cada entrada."),
         },
         {
-          head: 'Sincronização sem Nuvem do App:',
-          desc: 'Exporte backups criptografados para uma pasta do Syncthing, Dropbox ou Drive local.',
+          head: tr("Sincronização automática por pasta:"),
+          desc: tr("Em Configurações, escolha uma pasta do Syncthing, OneDrive ou Drive: o cofre grava e lê sozinho um arquivo criptografado nela."),
         },
         {
-          head: 'Sem Dependência de Servidores:',
-          desc: 'Seus múltiplos dispositivos se sincronizam trocando apenas o arquivo .vault.json criptografado.',
+          head: tr("Sem Dependência de Servidores:"),
+          desc: tr("Edições, novos itens e exclusões chegam aos outros aparelhos. O arquivo só abre com a senha mestra."),
         },
       ],
     },
@@ -133,8 +134,8 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className={`text-sm font-bold ${activeTheme.textPrimary}`}>Manual de Segurança Zero-Knowledge</h3>
-              <p className={`text-[10px] ${activeTheme.textMuted} font-mono`}>Passo {currentSlide + 1} de {SLIDES.length}</p>
+              <h3 className={`text-sm font-bold ${activeTheme.textPrimary}`}>{tr("Manual de Segurança Zero-Knowledge")}</h3>
+              <p className={`text-xs ${activeTheme.textMuted}`}>{tr("Passo")} {currentSlide + 1} {tr("de")} {SLIDES.length}</p>
             </div>
           </div>
 
@@ -156,12 +157,12 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
             </div>
             <div>
               <h4 className={`text-base font-bold ${activeTheme.textPrimary}`}>{slide.title}</h4>
-              <p className={`text-xs ${activeTheme.textMuted} font-mono mt-0.5`}>{slide.subtitle}</p>
+              <p className={`text-xs ${activeTheme.textMuted} mt-0.5`}>{slide.subtitle}</p>
             </div>
           </div>
 
           {/* Bullets */}
-          <div className="space-y-3 pt-2 font-mono">
+          <div className="space-y-3 pt-2">
             {slide.bullets.map((b, idx) => (
               <div
                 key={idx}
@@ -181,7 +182,7 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
         </div>
 
         {/* Footer Carousel Navigation */}
-        <div className={`p-4 border-t ${activeTheme.borderInner} ${activeTheme.bgCardInner} flex items-center justify-between font-mono`}>
+        <div className={`p-4 border-t ${activeTheme.borderInner} ${activeTheme.bgCardInner} flex items-center justify-between`}>
           {/* Dots Indicator */}
           <div className="flex items-center gap-1.5">
             {SLIDES.map((_, i) => (
@@ -202,9 +203,9 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
             {currentSlide > 0 && (
               <button
                 onClick={() => setCurrentSlide(prev => prev - 1)}
-                className={`px-3 py-2 rounded-xl border ${activeTheme.borderMain} ${activeTheme.bgInput} ${activeTheme.textSecondary} text-xs font-semibold flex items-center gap-1 hover:bg-gray-800 transition cursor-pointer`}
+                className={`px-3 py-2 rounded-xl border ${activeTheme.borderMain} ${activeTheme.bgInput} ${activeTheme.textSecondary} text-xs font-semibold flex items-center gap-1 hover:bg-[#183238] transition cursor-pointer`}
               >
-                <ChevronLeft className="w-4 h-4" /> Anterior
+                <ChevronLeft className="w-4 h-4" /> {tr("Anterior")}
               </button>
             )}
 
@@ -213,14 +214,14 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
                 onClick={() => setCurrentSlide(prev => prev + 1)}
                 className={`px-4 py-2 rounded-xl ${activeAccent.bgBtn} ${activeAccent.bgBtnHover} text-white text-xs font-bold flex items-center gap-1 shadow-md transition cursor-pointer`}
               >
-                Próximo <ChevronRight className="w-4 h-4" />
+                {tr("Próximo")} <ChevronRight className="w-4 h-4" />
               </button>
             ) : (
               <button
                 onClick={onClose}
                 className={`px-4 py-2 rounded-xl ${activeAccent.bgBtn} ${activeAccent.bgBtnHover} text-white text-xs font-bold shadow-md transition cursor-pointer`}
               >
-                Entendi, Acessar Cofre!
+                {tr("Entendi, Acessar Cofre!")}
               </button>
             )}
           </div>

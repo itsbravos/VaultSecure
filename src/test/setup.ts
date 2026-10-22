@@ -3,3 +3,7 @@
 if (typeof (globalThis as any).window === 'undefined') {
   (globalThis as any).window = globalThis;
 }
+
+// The app defaults to English; tests assert the Portuguese source strings
+import { setLang } from '../lib/i18n';
+setLang('pt');

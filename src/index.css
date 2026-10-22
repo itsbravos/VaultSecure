@@ -1,18 +1,59 @@
 @import "tailwindcss";
 
-@layer base {
-  body {
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+@theme {
+  --font-sans: 'Schibsted Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --animate-slide-up: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-shake: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
-  
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-3px); }
+    40%, 60% { transform: translateX(3px); }
+  }
+}
+
+@layer base {
+  html, body {
+    background: #0E1F24;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   code, pre, .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
+    font-feature-settings: normal;
+  }
+
+  ::selection {
+    background: rgba(201, 165, 76, 0.35);
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid rgba(161, 161, 170, 0.6);
+    outline-offset: 2px;
   }
 
   /* Custom Thin Scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-button {
@@ -26,16 +67,89 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(156, 163, 175, 0.3);
+    background: rgba(161, 161, 170, 0.18);
     border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(156, 163, 175, 0.5);
+    background: rgba(161, 161, 170, 0.35);
+    background-clip: padding-box;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+    scrollbar-color: rgba(161, 161, 170, 0.2) transparent;
+  }
+}
+
+@layer components {
+  /* Subtle dotted grid used behind the lock screen */
+  .bg-grid {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The search field has its own clear button */
+input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Zoom-proofing: let text wrap inside tight flex/grid cells instead of spilling
+   out of its box. `anywhere` (unlike `break-word`) also lowers the min-content
+   width, which is what lets flex children actually shrink. */
+@layer base {
+  p, span, label, button, a, li, td, th, h1, h2, h3, h4, h5, h6, dt, dd, legend, option {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Buttons react to the pointer: lift on hover, press on click.
+   Uses `transform`, which Tailwind v4's own translate/scale utilities don't
+   touch (they use the individual `translate`/`scale` properties), so this
+   composes with positioning classes instead of overriding them. */
+@layer base {
+  button:not(:disabled),
+  [role='button'],
+  [role='tab'],
+  [role='radio'] {
+    transition-property: transform, box-shadow, background-color, border-color, color, filter, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Compact buttons lift; full-width rows (nav items, list rows) only press */
+  button:not(:disabled):not(.w-full):hover {
+    transform: translateY(-1px);
+  }
+  button:not(:disabled):not(.w-full):hover:is([class*='bg-emerald-6'], [class*='bg-cyan-6'], [class*='bg-blue-6'], [class*='bg-violet-6'], [class*='bg-red-6'], [class*='bg-[#A8862F]'], [class*='bg-[#94741F]']) {
+    filter: brightness(1.08);
+    box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.55);
+  }
+  button:not(:disabled):active {
+    transform: translateY(0) scale(0.97);
+    transition-duration: 60ms;
+  }
+  button.w-full:not(:disabled):active {
+    transform: scale(0.99);
+  }
+
+  /* The icon inside a button nudges along with it */
+  button:not(:disabled):not(.w-full):hover > svg:first-child {
+    transform: scale(1.08);
+  }
+  button > svg {
+    transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }

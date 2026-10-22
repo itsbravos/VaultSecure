@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { VaultItem, VaultSettings } from '../types';
 import { getCategoryIconComponent } from '../lib/categoryIcons';
+import { getTheme } from '../lib/theme';
 
 interface ItemIconProps {
   item: VaultItem;
@@ -87,7 +88,7 @@ const KNOWN_BRANDS: KnownBrand[] = [
   {
     keywords: ['apple', 'icloud', 'apple.com'],
     colorBg: 'bg-gray-500/10 dark:bg-gray-500/20',
-    colorText: 'text-gray-800 dark:text-gray-200',
+    colorText: 'text-gray-800 dark:text-[#D3E0DC]',
     borderColor: 'border-gray-500/30',
     icon: Shield,
   },
@@ -182,91 +183,79 @@ export const ItemIcon: React.FC<ItemIconProps> = ({
     brand.keywords.some(kw => searchText.includes(kw))
   );
 
+  const isLight = getTheme(settings?.theme).isLight;
+
   const dimensionClass =
     size === 'sm'
-      ? 'w-7 h-7 text-xs rounded-lg'
+      ? 'w-7 h-7 text-[13px] rounded-lg'
       : size === 'lg'
-      ? 'w-12 h-12 text-lg rounded-xl'
-      : 'w-10 h-10 text-sm rounded-xl';
+      ? 'w-12 h-12 text-xl rounded-xl'
+      : 'w-10 h-10 text-base rounded-xl';
 
   const iconSizeClass =
     size === 'sm' ? 'w-3.5 h-3.5' : size === 'lg' ? 'w-6 h-6' : 'w-5 h-5';
 
-  // If URL domain exists, online favicons enabled, and no favicon error yet, try rendering favicon image
+  // Favicons are drawn for white backgrounds, so they sit on a light tile in both themes
   const canFetchOnline = settings?.enableOnlineFavicons !== false;
   if (domain && canFetchOnline && !imgError) {
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
     return (
       <div
-        className={`${dimensionClass} bg-stone-900/80 border border-stone-800 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative ${className}`}
+        className={`${dimensionClass} bg-[#F7FAF8] ring-1 ring-inset ring-black/[0.08] flex items-center justify-center overflow-hidden shrink-0 ${className}`}
         title={item.title}
       >
         <img
           src={faviconUrl}
-          alt={item.title}
+          alt=""
+          // Google answers unknown domains with a generic 16px globe; show our monogram instead
+          onLoad={e => e.currentTarget.naturalWidth <= 16 && setImgError(true)}
           onError={() => setImgError(true)}
-          className="w-3/4 h-3/4 object-contain rounded"
+          className="w-[62%] h-[62%] object-contain"
           loading="lazy"
         />
       </div>
     );
   }
 
-  // If matched brand
+  // Known brand without a usable favicon
   if (matchedBrand) {
     const IconComp = matchedBrand.icon;
     return (
       <div
-        className={`${dimensionClass} ${matchedBrand.colorBg} ${matchedBrand.colorText} border ${matchedBrand.borderColor} flex items-center justify-center shrink-0 shadow-xs ${className}`}
+        className={`${dimensionClass} ${matchedBrand.colorBg} ${matchedBrand.colorText} flex items-center justify-center shrink-0 ${className}`}
         title={item.title}
       >
-        {matchedBrand.svgIcon ? (
-          matchedBrand.svgIcon
-        ) : IconComp ? (
-          <IconComp className={iconSizeClass} />
-        ) : (
-          <Globe className={iconSizeClass} />
-        )}
+        {matchedBrand.svgIcon ? matchedBrand.svgIcon : IconComp ? <IconComp className={iconSizeClass} /> : <Globe className={iconSizeClass} />}
       </div>
     );
   }
 
-  // Fallback to Category Icon
-  let CategoryIconComponent: React.ElementType = Key;
-  let bgClass = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
+  // Stable soft color per name, readable on both paper and ink themes
+  const hue = [...(item.title || '?')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+  const tint = isLight
+    ? { background: `hsl(${hue} 32% 90%)`, color: `hsl(${hue} 45% 28%)` }
+    : { background: `hsl(${hue} 28% 21%)`, color: `hsl(${hue} 55% 80%)` };
 
-  if (item.category === 'login') {
-    CategoryIconComponent = Key;
-    bgClass = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
-  } else if (item.category === 'card') {
-    CategoryIconComponent = CreditCard;
-    bgClass = 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30';
-  } else if (item.category === 'note') {
-    CategoryIconComponent = FileText;
-    bgClass = 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30';
-  } else if (item.category === 'certificate') {
-    CategoryIconComponent = FileCheck;
-    bgClass = 'bg-blue-500/10 text-blue-500 border-blue-500/30';
-  } else if (item.category === 'api_key') {
-    CategoryIconComponent = Code2;
-    bgClass = 'bg-purple-500/10 text-purple-500 border-purple-500/30';
-  } else {
-    // Custom Category
-    const customCat = (settings?.customCategories || []).find(c => c.id === item.category);
-    if (customCat?.icon) {
-      CategoryIconComponent = getCategoryIconComponent(customCat.icon);
-    } else {
-      CategoryIconComponent = Folder;
-    }
-    bgClass = 'bg-amber-500/10 text-amber-500 border-amber-500/30';
-  }
+  // Logins and keys read best as a monogram; other types keep their category glyph
+  const CATEGORY_ICONS: Record<string, React.ElementType> = {
+    card: CreditCard,
+    note: FileText,
+    certificate: FileCheck,
+  };
+  const customCat = (settings?.customCategories || []).find(c => c.id === item.category);
+  const CategoryIconComponent: React.ElementType | null =
+    CATEGORY_ICONS[item.category] || (customCat?.icon ? getCategoryIconComponent(customCat.icon) : null);
+
+  const letter = (item.title.trim().match(/[\p{L}\p{N}]/u)?.[0] || '?').toUpperCase();
 
   return (
     <div
-      className={`${dimensionClass} ${bgClass} border flex items-center justify-center shrink-0 shadow-xs ${className}`}
+      className={`${dimensionClass} flex items-center justify-center shrink-0 font-semibold ${className}`}
+      style={tint}
       title={item.title}
+      aria-hidden
     >
-      <CategoryIconComponent className={iconSizeClass} />
+      {CategoryIconComponent ? <CategoryIconComponent className={iconSizeClass} /> : letter}
     </div>
   );
 };

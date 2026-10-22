@@ -21,8 +21,10 @@ import {
   deriveMasterKey,
   base64ToBuffer,
 } from '../lib/crypto';
-import { loadEncryptedVaultItems, saveEncryptedVaultItems } from '../lib/storage';
+import { loadEncryptedVaultItems, saveEncryptedVaultItems, recordDeletion } from '../lib/storage';
 import { getAccent, getTheme } from '../lib/theme';
+import { confirmDialog } from './DialogHost';
+import { PageHeader } from './PageHeader';
 import { VAULTS } from '../lib/vaults';
 import {
   ExportScope,
@@ -33,6 +35,7 @@ import {
   groupItemsByVault,
   mergeItemsById,
 } from '../lib/backup';
+import { tr } from '../lib/i18n';
 
 interface BackupViewProps {
   items: VaultItem[];
@@ -41,11 +44,13 @@ interface BackupViewProps {
   salt: Uint8Array | null;
   onImportItems: (newItems: VaultItem[]) => void;
   settings?: VaultSettings;
+  onOpenBrowserImport?: () => void;
+  onAfterImport?: () => void; // e.g. kick off folder sync
 }
 
-const SCOPE_OPTIONS: { id: ExportScope; label: string }[] = [
-  ...VAULTS.map(v => ({ id: v.id as ExportScope, label: v.name })),
-  { id: 'all', label: 'Todos os Cofres' },
+const SCOPE_OPTIONS = (): { id: ExportScope; label: string }[] => [
+  ...VAULTS.map(v => ({ id: v.id as ExportScope, label: tr(v.name) })),
+  { id: 'all', label: tr("Todos os Cofres") },
 ];
 
 export const BackupView: React.FC<BackupViewProps> = ({
@@ -55,6 +60,8 @@ export const BackupView: React.FC<BackupViewProps> = ({
   salt,
   onImportItems,
   settings,
+  onOpenBrowserImport,
+  onAfterImport,
 }) => {
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [importPassphrase, setImportPassphrase] = useState('');
@@ -104,8 +111,8 @@ export const BackupView: React.FC<BackupViewProps> = ({
     });
   };
 
-  const accent = getAccent(settings?.accentColor);
   const theme = getTheme(settings?.theme);
+  const accent = getAccent(settings?.accentColor, theme.isLight);
 
   // Export Encrypted JSON file (.vault)
   const handleExportEncrypted = async () => {
@@ -142,12 +149,15 @@ export const BackupView: React.FC<BackupViewProps> = ({
   };
 
   // Export Plaintext JSON file
-  const handleExportPlaintext = () => {
+  const handleExportPlaintext = async () => {
     if (itemsToExport.length === 0) return;
     if (
-      !confirm(
-        'ATENÇÃO: A exportação em texto claro não possui criptografia! Qualquer pessoa poderá ler suas senhas. Deseja continuar?'
-      )
+      !(await confirmDialog({
+        title: tr("Exportar sem criptografia?"),
+        message: tr("O arquivo JSON terá todas as suas senhas em texto legível. Qualquer pessoa com acesso a ele poderá lê-las."),
+        confirmLabel: tr("Exportar mesmo assim"),
+        danger: true,
+      }))
     ) {
       return;
     }
@@ -172,9 +182,12 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
     if (
       importMode === 'replace' &&
-      !confirm(
-        'ATENÇÃO: o modo "Substituir" vai apagar todos os itens já cadastrados em cada cofre afetado antes de importar o backup. Esta ação não pode ser desfeita. Deseja continuar?'
-      )
+      !(await confirmDialog({
+        title: tr("Substituir os itens dos cofres?"),
+        message: tr("Todos os itens já cadastrados em cada cofre afetado serão apagados antes de importar o backup. Isso não pode ser desfeito."),
+        confirmLabel: tr("Substituir"),
+        danger: true,
+      }))
     ) {
       return;
     }
@@ -188,17 +201,23 @@ export const BackupView: React.FC<BackupViewProps> = ({
       const vaultName = VAULTS.find(v => v.id === vaultId)?.name || vaultId;
       summary.push(`${groupItems.length} em ${vaultName}`);
 
+      const current = vaultId === activeVaultId ? items : await loadEncryptedVaultItems(masterKey, vaultId);
+      const finalList = importMode === 'replace' ? groupItems : mergeItemsById(current, groupItems);
+      if (importMode === 'replace') {
+        // Record what "replace" removed, so folder sync deletes it on other devices
+        // instead of syncing it back
+        const kept = new Set(finalList.map(i => i.id));
+        current.filter(i => !kept.has(i.id)).forEach(i => recordDeletion(vaultId, i.id));
+      }
       if (vaultId === activeVaultId) {
-        const finalList = importMode === 'replace' ? groupItems : mergeItemsById(items, groupItems);
         onImportItems(finalList);
       } else {
-        const base = importMode === 'replace' ? [] : await loadEncryptedVaultItems(masterKey, vaultId);
-        const finalList = importMode === 'replace' ? groupItems : mergeItemsById(base, groupItems);
         await saveEncryptedVaultItems(finalList, masterKey, salt, vaultId);
       }
     }
+    onAfterImport?.();
 
-    setImportStatus(`Sucesso! ${total} itens restaurados (${summary.join(', ')}).`);
+    setImportStatus(tr("Sucesso! {p0} itens restaurados ({p1}).", { p0: total, p1: summary.join(', ') }));
   };
 
   // Handle Import File
@@ -207,7 +226,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
     if (!file) return;
 
     setImportError(null);
-    setImportStatus('Lendo arquivo de backup...');
+    setImportStatus(tr("Lendo arquivo de backup..."));
 
     const reader = new FileReader();
     reader.onload = async event => {
@@ -218,7 +237,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
         if (parsed.ciphertext && parsed.iv && parsed.salt) {
           if (!importPassphrase.trim()) {
             setImportError(
-              'Digite a senha do arquivo de backup antes de selecioná-lo. Use a Senha Mestra do dispositivo onde o backup foi criado, ou a Senha Personalizada de Backup, se você definiu uma na exportação.'
+              tr("Digite a senha do arquivo de backup antes de selecioná-lo. Use a Senha Mestra do dispositivo onde o backup foi criado, ou a Senha Personalizada de Backup, se você definiu uma na exportação.")
             );
             setImportStatus(null);
             e.target.value = '';
@@ -238,7 +257,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
             setImportPassphrase('');
           } catch (err) {
             setImportError(
-              'Falha ao descriptografar. Verifique se a senha digitada é a Senha Mestra do dispositivo original (ou a Senha Personalizada de Backup usada na exportação).'
+              tr("Falha ao descriptografar. Verifique se a senha digitada é a Senha Mestra do dispositivo original (ou a Senha Personalizada de Backup usada na exportação).")
             );
             setImportStatus(null);
           }
@@ -246,13 +265,13 @@ export const BackupView: React.FC<BackupViewProps> = ({
           await applyImportedItems(parsed as ExportedVaultItem[]);
         } else {
           setImportError(
-            'Formato de arquivo inválido. Selecione um arquivo .vault ou .json válido.'
+            tr("Formato de arquivo inválido. Selecione um arquivo .vault ou .json válido.")
           );
           setImportStatus(null);
         }
       } catch (err) {
         setImportError(
-          'Erro na leitura do arquivo. Certifique-se de que é um JSON válido.'
+          tr("Erro na leitura do arquivo. Certifique-se de que é um JSON válido.")
         );
         setImportStatus(null);
       }
@@ -262,32 +281,32 @@ export const BackupView: React.FC<BackupViewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-fade-in">
-      {/* Header Banner */}
-      <div
-        className={`${theme.bgCard} ${theme.borderMain} border rounded-2xl p-6 ${theme.depthShadow} flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-10 h-10 rounded-xl ${accent.bgBtn} text-white flex items-center justify-center ${accent.shadowAccent} shrink-0`}
-          >
-            <Download className="w-5 h-5" />
+    <div className="max-w-5xl space-y-8 pb-12">
+      <PageHeader
+        theme={theme}
+        title={tr("Backup")}
+        description={tr("Exporte um arquivo criptografado de um cofre (ou de todos) e restaure em outro dispositivo.")}
+      />
+
+      {onOpenBrowserImport && (
+        <section className={`flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-2xl border ${theme.borderMain} ${theme.bgCard}`}>
+          <div className={`w-11 h-11 rounded-xl border ${theme.borderInner} ${theme.bgCardInner} ${accent.textAccent} flex items-center justify-center shrink-0`}>
+            <Upload className="w-5 h-5" />
           </div>
-          <div>
-            <h2 className={`text-lg font-bold ${theme.textPrimary} tracking-tight`}>
-              Central de Backup & Exportação
-            </h2>
-            <p className={`text-xs ${theme.textMuted} font-mono`}>
-              Portabilidade Local Total sem Servidores - Arquivos .vault Criptografados com AES-256
+          <div className="min-w-0 flex-1">
+            <h3 className={`text-[15px] font-semibold ${theme.textPrimary}`}>{tr("Importar senhas do navegador")}</h3>
+            <p className={`text-[13px] ${theme.textMuted} mt-0.5`}>
+              {tr("Traga as senhas salvas no Chrome, Edge, Firefox ou Safari. Você revisa tudo antes de importar.")}
             </p>
           </div>
-        </div>
-
-        <div className={`flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg ${theme.bgCardInner} border ${theme.borderInner} ${theme.textSecondary}`}>
-          <ShieldCheck className={`w-4 h-4 ${accent.textAccent}`} />
-          <span>{items.length} Registros no Cofre</span>
-        </div>
-      </div>
+          <button
+            onClick={onOpenBrowserImport}
+            className={`shrink-0 h-10 px-4 rounded-xl ${accent.bgBtn} ${accent.bgBtnHover} ${accent.shadowAccent} text-white text-sm font-semibold cursor-pointer`}
+          >
+            {tr("Começar")}
+          </button>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* EXPORT SECTION */}
@@ -297,28 +316,28 @@ export const BackupView: React.FC<BackupViewProps> = ({
           <div className={`flex items-center gap-2 border-b ${theme.borderInner} pb-3`}>
             <Download className={`w-4 h-4 ${accent.textAccent}`} />
             <h3 className={`text-sm font-bold ${theme.textPrimary}`}>
-              Exportar Backup Criptografado
+              {tr("Exportar Backup Criptografado")}
             </h3>
           </div>
 
-          <p className={`text-xs ${theme.textMuted} font-mono leading-relaxed`}>
-            Gera um arquivo <strong>.vault</strong> fortemente protegido com a sua Senha Mestra (ou uma senha personalizada de backup). Você pode transferir este arquivo com total segurança entre computadores e celulares.
+          <p className={`text-xs ${theme.textMuted} leading-relaxed`}>
+            {tr("Gera um arquivo")} <strong>.vault</strong> {tr("fortemente protegido com a sua Senha Mestra (ou uma senha personalizada de backup). Você pode transferir este arquivo com total segurança entre computadores e celulares.")}
           </p>
 
           {/* Vault Scope Selector */}
           <div className="space-y-2">
-            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono`}>
-              Cofre a Exportar
+            <label className={`text-xs font-semibold ${theme.textSecondary}`}>
+              {tr("Cofre a Exportar")}
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {SCOPE_OPTIONS.map(opt => {
+              {SCOPE_OPTIONS().map(opt => {
                 const isActive = exportScope === opt.id;
                 return (
                   <button
                     key={opt.id}
                     type="button"
                     onClick={() => setExportScope(opt.id)}
-                    className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                    className={`p-2.5 rounded-xl border text-[11px] flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                       isActive ? `${theme.bgCardInner} ${accent.borderAccent}` : `${theme.bgCardInner} ${theme.borderInner}`
                     }`}
                   >
@@ -352,18 +371,18 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   borderColor: selectionMode ? accent.colorHex : theme.isLight ? '#9CA3AF' : '#4B5563',
                 }}
               />
-              <span className={`flex items-center gap-1.5 font-mono ${theme.textSecondary}`}>
+              <span className={`flex items-center gap-1.5 ${theme.textSecondary}`}>
                 <ListChecks className={`w-3.5 h-3.5 ${accent.textAccent}`} />
-                Selecionar itens específicos (em vez de exportar todos do escopo)
+                {tr("Selecionar itens específicos (em vez de exportar todos do escopo)")}
               </span>
             </button>
 
             {selectionMode && (
               <div className={`max-h-56 overflow-y-auto rounded-xl border ${theme.borderMain} ${theme.bgCardInner} divide-y ${theme.borderInner}`}>
                 {isLoadingScope ? (
-                  <p className={`p-3 text-[11px] ${theme.textMuted} font-mono`}>Carregando itens do cofre...</p>
+                  <p className={`p-3 text-[11px] ${theme.textMuted}`}>{tr("Carregando itens do cofre...")}</p>
                 ) : scopedItems.length === 0 ? (
-                  <p className={`p-3 text-[11px] ${theme.textMuted} font-mono`}>Nenhum item neste escopo.</p>
+                  <p className={`p-3 text-[11px] ${theme.textMuted}`}>{tr("Nenhum item neste escopo.")}</p>
                 ) : (
                   scopedItems.map(item => {
                     const isChecked = selectedIds.has(item.id);
@@ -383,7 +402,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
                         />
                         <span className={`truncate ${theme.textPrimary}`}>{item.title}</span>
                         {exportScope === 'all' && (
-                          <span className={`ml-auto shrink-0 text-[10px] font-mono ${theme.textMuted}`}>
+                          <span className={`ml-auto shrink-0 text-xs ${theme.textMuted}`}>
                             {VAULTS.find(v => v.id === item.sourceVaultId)?.name}
                           </span>
                         )}
@@ -394,22 +413,22 @@ export const BackupView: React.FC<BackupViewProps> = ({
               </div>
             )}
 
-            <p className={`text-[11px] font-mono ${theme.textMuted} flex items-center gap-1.5`}>
+            <p className={`text-[11px] ${theme.textMuted} flex items-center gap-1.5`}>
               <Check className={`w-3.5 h-3.5 ${accent.textAccent}`} />
-              {itemsToExport.length} {itemsToExport.length === 1 ? 'item será exportado' : 'itens serão exportados'}
+              {itemsToExport.length} {itemsToExport.length === 1 ? tr("item será exportado") : tr("itens serão exportados")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5 font-mono`}>
-              <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Senha Personalizada de Backup (Opcional)
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5`}>
+              <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> {tr("Senha Personalizada de Backup (Opcional)")}
             </label>
             <input
               type="password"
               value={backupPassphrase}
               onChange={e => setBackupPassphrase(e.target.value)}
-              placeholder="Deixe em branco para usar sua Senha Mestra..."
-              className={`w-full ${theme.bgInput} border ${theme.borderMain} rounded-xl p-3 text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono ${theme.inputDepth}`}
+              placeholder={tr("Deixe em branco para usar sua Senha Mestra...")}
+              className={`w-full ${theme.bgInput} border ${theme.borderMain} rounded-xl p-3 text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} ${theme.inputDepth}`}
             />
           </div>
 
@@ -420,16 +439,16 @@ export const BackupView: React.FC<BackupViewProps> = ({
               className={`w-full py-3 ${accent.bgBtn} ${accent.bgBtnHover} disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-lg transition-colors flex items-center justify-center gap-2`}
             >
               <FileJson className="w-4 h-4" />
-              <span>Baixar Arquivo Criptografado (.vault)</span>
+              <span>{tr("Baixar Arquivo Criptografado (.vault)")}</span>
             </button>
 
             <button
               onClick={handleExportPlaintext}
               disabled={itemsToExport.length === 0}
-              className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-red-500 rounded-xl text-xs font-semibold border border-red-500/30 transition-colors flex items-center justify-center gap-2 font-mono"
+              className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed text-red-500 rounded-xl text-xs font-semibold border border-red-500/30 transition-colors flex items-center justify-center gap-2"
             >
               <AlertTriangle className="w-4 h-4 text-red-500" />
-              <span>Exportar em Texto Claro (Inseguro - JSON)</span>
+              <span>{tr("Exportar em Texto Claro (Inseguro - JSON)")}</span>
             </button>
           </div>
         </div>
@@ -441,40 +460,40 @@ export const BackupView: React.FC<BackupViewProps> = ({
           <div className={`flex items-center gap-2 border-b ${theme.borderInner} pb-3`}>
             <Upload className={`w-4 h-4 ${accent.textAccent}`} />
             <h3 className={`text-sm font-bold ${theme.textPrimary}`}>
-              Restaurar / Importar Cofre
+              {tr("Restaurar / Importar Cofre")}
             </h3>
           </div>
 
-          <p className={`text-xs ${theme.textMuted} font-mono leading-relaxed`}>
-            Selecione um arquivo <strong>.vault</strong> criado anteriormente neste ou em outro dispositivo para mesclar e restaurar suas credenciais.
+          <p className={`text-xs ${theme.textMuted} leading-relaxed`}>
+            {tr("Selecione um arquivo")} <strong>.vault</strong> {tr("criado anteriormente neste ou em outro dispositivo para mesclar e restaurar suas credenciais.")}
           </p>
 
           <div className="space-y-2">
-            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5 font-mono`}>
-              <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Senha do Arquivo de Backup
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1.5`}>
+              <Lock className={`w-3.5 h-3.5 ${accent.textAccent}`} /> {tr("Senha do Arquivo de Backup")}
             </label>
             <input
               type="password"
               value={importPassphrase}
               onChange={e => setImportPassphrase(e.target.value)}
-              placeholder="Senha Mestra de origem ou Senha Personalizada usada no export..."
-              className={`w-full ${theme.bgInput} border ${theme.borderMain} rounded-xl p-3 text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono ${theme.inputDepth}`}
+              placeholder={tr("Senha Mestra de origem ou Senha Personalizada usada no export...")}
+              className={`w-full ${theme.bgInput} border ${theme.borderMain} rounded-xl p-3 text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} ${theme.inputDepth}`}
             />
-            <p className={`text-[10px] ${theme.textMuted} font-mono leading-relaxed`}>
-              Se o backup foi criado em outro computador com a Senha Mestra dele, digite <strong>essa</strong> senha aqui (não a deste dispositivo). Se você definiu uma Senha Personalizada de Backup ao exportar, use ela.
+            <p className={`text-xs ${theme.textMuted} leading-relaxed`}>
+              {tr("Se o backup foi criado em outro computador com a Senha Mestra dele, digite")} <strong>{tr("essa")}</strong> {tr("senha aqui (não a deste dispositivo). Se você definiu uma Senha Personalizada de Backup ao exportar, use ela.")}
             </p>
           </div>
 
           {/* Merge vs Replace */}
           <div className="space-y-2">
-            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono`}>
-              Ao Importar
+            <label className={`text-xs font-semibold ${theme.textSecondary}`}>
+              {tr("Ao Importar")}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setImportMode('merge')}
-                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                className={`p-2.5 rounded-xl border text-[11px] flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                   importMode === 'merge' ? `${theme.bgCardInner} ${accent.borderAccent}` : `${theme.bgCardInner} ${theme.borderInner}`
                 }`}
               >
@@ -486,13 +505,13 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   }}
                 />
                 <span className={importMode === 'merge' ? `${theme.textPrimary} font-bold` : theme.textSecondary}>
-                  Mesclar (manter existentes e adicionar novos)
+                  {tr("Mesclar (manter existentes e adicionar novos)")}
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setImportMode('replace')}
-                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                className={`p-2.5 rounded-xl border text-[11px] flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                   importMode === 'replace' ? `${theme.bgCardInner} border-red-500` : `${theme.bgCardInner} ${theme.borderInner}`
                 }`}
               >
@@ -504,7 +523,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   }}
                 />
                 <span className={importMode === 'replace' ? `${theme.textPrimary} font-bold` : theme.textSecondary}>
-                  Substituir (apaga o que já existe)
+                  {tr("Substituir (apaga o que já existe)")}
                 </span>
               </button>
             </div>
@@ -522,23 +541,23 @@ export const BackupView: React.FC<BackupViewProps> = ({
             </div>
             <div>
               <p className={`text-xs font-semibold ${theme.textPrimary}`}>
-                Clique para selecionar o arquivo .vault ou .json
+                {tr("Clique para selecionar o arquivo .vault ou .json")}
               </p>
-              <p className={`text-[10px] ${theme.textMuted} font-mono mt-1`}>
-                Suporta backups criptografados do VaultSecure
+              <p className={`text-xs ${theme.textMuted} mt-1`}>
+                {tr("Suporta backups criptografados do VaultSecure")}
               </p>
             </div>
           </div>
 
           {importStatus && (
-            <div className="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-400 rounded-xl text-xs font-mono flex items-center gap-2">
+            <div className="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-400 rounded-xl text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{importStatus}</span>
             </div>
           )}
 
           {importError && (
-            <div className="p-3 bg-red-950/60 border border-red-800 text-red-400 rounded-xl text-xs font-mono flex items-center gap-2">
+            <div className="p-3 bg-red-950/60 border border-red-800 text-red-400 rounded-xl text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>{importError}</span>
             </div>

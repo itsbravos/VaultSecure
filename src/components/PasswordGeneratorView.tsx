@@ -15,6 +15,8 @@ import {
 } from '../lib/crypto';
 import { VaultSettings } from '../types';
 import { getAccent, getTheme } from '../lib/theme';
+import { PageHeader } from './PageHeader';
+import { tr } from '../lib/i18n';
 
 interface PasswordGeneratorViewProps {
   onCopyText: (text: string, label: string) => void;
@@ -41,7 +43,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
 
   const [generatedPassword, setGeneratedPassword] = useState('');
 
-  const accent = getAccent(settings?.accentColor);
+  const accent = getAccent(settings?.accentColor, getTheme(settings?.theme).isLight);
   const theme = getTheme(settings?.theme);
 
   const handleRegenerate = () => {
@@ -56,29 +58,18 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
   const strength = calculatePasswordStrength(generatedPassword);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-fade-in">
-      {/* Top Banner Header */}
-      <div className={`${theme.bgCard} ${theme.borderMain} border rounded-2xl p-6 ${theme.depthShadow} flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl ${accent.bgBtn} text-white flex items-center justify-center ${accent.shadowAccent} shrink-0`}>
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className={`text-lg font-bold ${theme.textPrimary} tracking-tight`}>Gerador Criptográfico de Senhas</h2>
-            <p className={`text-xs ${theme.textMuted} font-mono`}>
-              Gere senhas de alta entropia derivadas com CSPRNG local no navegador (Web Crypto API)
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={handleRegenerate}
-          className={`${accent.bgBtn} ${accent.bgBtnHover} text-white font-semibold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition-all ${accent.shadowAccent}`}
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Gerar Nova Senha</span>
-        </button>
-      </div>
+    <div className="max-w-5xl space-y-8 pb-12">
+      <PageHeader
+        theme={theme}
+        title={tr("Gerador de senhas")}
+        description={tr("Senhas aleatórias geradas no próprio navegador. Nada sai do seu dispositivo.")}
+        actions={
+          <button onClick={handleRegenerate} className={`h-9 px-4 rounded-lg ${accent.bgBtn} ${accent.bgBtnHover} ${accent.shadowAccent} text-white text-[13px] font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50`}>
+            <RefreshCw className="w-4 h-4" />
+            {tr("Gerar outra")}
+          </button>
+        }
+      />
 
       {/* Main Generator Box */}
       <div className={`${theme.bgCard} ${theme.borderMain} border rounded-2xl p-6 space-y-6 ${theme.depthShadow} transition-colors`}>
@@ -90,12 +81,12 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
           </div>
 
           <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t ${theme.borderInner} text-xs`}>
-            <div className="flex items-center gap-2 font-mono">
-              <span className={`px-2.5 py-1 rounded text-[10px] font-bold ${strength.color}`}>
-                {strength.label}
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-1 rounded text-xs font-bold ${strength.color}`}>
+                {tr(strength.label)}
               </span>
               <span className={`${theme.textMuted} text-[11px]`}>
-                {strength.entropy} bits de entropia • Tempo para quebrar: {strength.crackTime}
+                {strength.entropy} {tr("bits de entropia • Tempo para quebrar:")} {tr(strength.crackTime)}
               </span>
             </div>
 
@@ -103,7 +94,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
               <button
                 onClick={handleRegenerate}
                 className={`p-2.5 ${theme.bgInput} ${theme.hoverBg} ${theme.textPrimary} border ${theme.borderMain} rounded-xl transition-colors`}
-                title="Gerar Outra Senha"
+                title={tr("Gerar Outra Senha")}
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -114,12 +105,12 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                 {copiedId === 'Senha Gerada' || copiedId === generatedPassword ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-300" />
-                    <span>Copiada!</span>
+                    <span>{tr("Copiada!")}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-4 h-4" />
-                    <span>Copiar Senha</span>
+                    <span>{tr("Copiar Senha")}</span>
                   </>
                 )}
               </button>
@@ -131,25 +122,25 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
         <div className={`flex ${theme.bgCardInner} p-1 rounded-xl border ${theme.borderInner} text-xs font-medium`}>
           <button
             onClick={() => setOptions({ ...options, passphraseMode: false })}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-mono flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all ${
               !options.passphraseMode
                 ? `${accent.bgBtn} text-white font-bold shadow-sm`
                 : `${theme.textMuted} ${theme.hoverBg} hover:${theme.textPrimary}`
             }`}
           >
             <KeyRound className="w-4 h-4" />
-            <span>Senha Criptográfica</span>
+            <span>{tr("Senha Criptográfica")}</span>
           </button>
           <button
             onClick={() => setOptions({ ...options, passphraseMode: true })}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-mono flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all ${
               options.passphraseMode
                 ? `${accent.bgBtn} text-white font-bold shadow-sm`
                 : `${theme.textMuted} ${theme.hoverBg} hover:${theme.textPrimary}`
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>Frase Secreta (Passphrase)</span>
+            <span>{tr("Frase Secreta (Passphrase)")}</span>
           </button>
         </div>
 
@@ -158,14 +149,14 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             
             {/* LENGTH SLIDER */}
-            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-4 font-mono shadow-inner`}>
+            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-4 shadow-inner`}>
               <div className="flex items-center justify-between">
                 <label className={`text-xs font-bold ${theme.textPrimary} flex items-center gap-1.5`}>
                   <Sliders className={`w-4 h-4 ${accent.textAccent}`} />
-                  Comprimento da Senha:
+                  {tr("Comprimento da Senha:")}
                 </label>
                 <span className={`text-sm font-bold ${accent.textAccent}`}>
-                  {options.length} caracteres
+                  {options.length} {tr("caracteres")}
                 </span>
               </div>
 
@@ -176,19 +167,19 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                 value={options.length}
                 onChange={e => setOptions({ ...options, length: Number(e.target.value) })}
                 style={{ accentColor: accent.colorHex }}
-                className="w-full bg-gray-300 dark:bg-gray-800 rounded-lg cursor-pointer h-2"
+                className="w-full bg-gray-300 dark:bg-[#183238] rounded-lg cursor-pointer h-2"
               />
 
-              <div className={`flex items-center justify-between text-[10px] ${theme.textMuted}`}>
-                <span>8 Caracteres</span>
-                <span>64 Caracteres</span>
+              <div className={`flex items-center justify-between text-xs ${theme.textMuted}`}>
+                <span>{tr("8 Caracteres")}</span>
+                <span>{tr("64 Caracteres")}</span>
               </div>
             </div>
 
             {/* TOGGLES & PARAMETERS */}
-            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-3 font-mono shadow-inner`}>
+            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-3 shadow-inner`}>
               <label className={`text-xs font-bold ${theme.textPrimary} block border-b ${theme.borderInner} pb-2`}>
-                Conjunto de Caracteres & Regras
+                {tr("Conjunto de caracteres e regras")}
               </label>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -196,7 +187,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setOptions({ ...options, useUppercase: !options.useUppercase })}
-                  className={`p-2.5 rounded-xl border text-xs font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                     options.useUppercase
                       ? `${theme.bgCardInner} ${accent.borderAccent}`
                       : `${theme.bgCardInner} ${theme.borderInner}`
@@ -210,14 +201,14 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                     }}
                   />
                   <span className={options.useUppercase ? `${theme.textPrimary} font-bold` : `${theme.textSecondary}`}>
-                    Maiúsculas (A-Z)
+                    {tr("Maiúsculas (A-Z)")}
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setOptions({ ...options, useLowercase: !options.useLowercase })}
-                  className={`p-2.5 rounded-xl border text-xs font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                     options.useLowercase
                       ? `${theme.bgCardInner} ${accent.borderAccent}`
                       : `${theme.bgCardInner} ${theme.borderInner}`
@@ -231,14 +222,14 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                     }}
                   />
                   <span className={options.useLowercase ? `${theme.textPrimary} font-bold` : `${theme.textSecondary}`}>
-                    Minúsculas (a-z)
+                    {tr("Minúsculas (a-z)")}
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setOptions({ ...options, useNumbers: !options.useNumbers })}
-                  className={`p-2.5 rounded-xl border text-xs font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                     options.useNumbers
                       ? `${theme.bgCardInner} ${accent.borderAccent}`
                       : `${theme.bgCardInner} ${theme.borderInner}`
@@ -252,14 +243,14 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                     }}
                   />
                   <span className={options.useNumbers ? `${theme.textPrimary} font-bold` : `${theme.textSecondary}`}>
-                    Números (0-9)
+                    {tr("Números (0-9)")}
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setOptions({ ...options, useSymbols: !options.useSymbols })}
-                  className={`p-2.5 rounded-xl border text-xs font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                     options.useSymbols
                       ? `${theme.bgCardInner} ${accent.borderAccent}`
                       : `${theme.bgCardInner} ${theme.borderInner}`
@@ -273,7 +264,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                     }}
                   />
                   <span className={options.useSymbols ? `${theme.textPrimary} font-bold` : `${theme.textSecondary}`}>
-                    Símbolos (!@#$)
+                    {tr("Símbolos (!@#$)")}
                   </span>
                 </button>
               </div>
@@ -282,7 +273,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setOptions({ ...options, avoidAmbiguous: !options.avoidAmbiguous })}
-                  className={`w-full p-2.5 rounded-xl border text-xs font-mono flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                  className={`w-full p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition-all select-none ${
                     options.avoidAmbiguous
                       ? `${theme.bgCardInner} ${accent.borderAccent}`
                       : `${theme.bgCardInner} ${theme.borderInner}`
@@ -296,7 +287,7 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                     }}
                   />
                   <span className={options.avoidAmbiguous ? `${theme.textPrimary} font-bold` : `${theme.textSecondary}`}>
-                    Evitar Caracteres Confusos (1, l, I, 0, O)
+                    {tr("Evitar Caracteres Confusos (1, l, I, 0, O)")}
                   </span>
                 </button>
               </div>
@@ -307,14 +298,14 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             
             {/* WORD COUNT SLIDER */}
-            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-4 font-mono shadow-inner`}>
+            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-4 shadow-inner`}>
               <div className="flex items-center justify-between">
                 <label className={`text-xs font-bold ${theme.textPrimary} flex items-center gap-1.5`}>
                   <Sliders className={`w-4 h-4 ${accent.textAccent}`} />
-                  Quantidade de Palavras:
+                  {tr("Quantidade de Palavras:")}
                 </label>
                 <span className={`text-sm font-bold ${accent.textAccent}`}>
-                  {options.wordCount} palavras
+                  {options.wordCount} {tr("palavras")}
                 </span>
               </div>
 
@@ -325,19 +316,19 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                 value={options.wordCount}
                 onChange={e => setOptions({ ...options, wordCount: Number(e.target.value) })}
                 style={{ accentColor: accent.colorHex }}
-                className="w-full bg-gray-300 dark:bg-gray-800 rounded-lg cursor-pointer h-2"
+                className="w-full bg-gray-300 dark:bg-[#183238] rounded-lg cursor-pointer h-2"
               />
 
-              <div className={`flex items-center justify-between text-[10px] ${theme.textMuted}`}>
-                <span>3 Palavras</span>
-                <span>10 Palavras</span>
+              <div className={`flex items-center justify-between text-xs ${theme.textMuted}`}>
+                <span>{tr("3 Palavras")}</span>
+                <span>{tr("10 Palavras")}</span>
               </div>
             </div>
 
             {/* SEPARATOR CONFIG */}
-            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-3 font-mono shadow-inner`}>
+            <div className={`p-4 ${theme.bgCardInner} rounded-xl border ${theme.borderInner} space-y-3 shadow-inner`}>
               <label className={`text-xs font-bold ${theme.textPrimary} block border-b ${theme.borderInner} pb-2`}>
-                Separador de Palavras
+                {tr("Separador de Palavras")}
               </label>
 
               <div className="space-y-3">
@@ -347,22 +338,22 @@ export const PasswordGeneratorView: React.FC<PasswordGeneratorViewProps> = ({
                   value={options.wordSeparator}
                   onChange={e => setOptions({ ...options, wordSeparator: e.target.value })}
                   className={`w-full ${theme.bgInput} border ${theme.borderInner} rounded-xl p-2.5 text-center font-mono ${accent.textAccent} font-bold text-sm focus:outline-none focus:ring-1 ${accent.ringAccent}`}
-                  placeholder="Ex: - ou . ou _"
+                  placeholder={tr("Ex: - ou . ou _")}
                 />
 
                 <div className="flex items-center gap-2 justify-center text-xs">
-                  <span className={`text-[10px] ${theme.textMuted}`}>Atalhos:</span>
+                  <span className={`text-xs ${theme.textMuted}`}>Atalhos:</span>
                   {['-', '.', '_', ' '].map(sep => (
                     <button
                       key={sep}
                       onClick={() => setOptions({ ...options, wordSeparator: sep })}
-                      className={`px-2.5 py-1 rounded-lg border text-xs font-mono transition-colors ${
+                      className={`px-2.5 py-1 rounded-lg border text-xs transition-colors ${
                         options.wordSeparator === sep
                           ? `${accent.bgBtn} text-white font-bold`
                           : `${theme.bgInput} ${theme.textSecondary} border-${theme.borderInner}`
                       }`}
                     >
-                      {sep === ' ' ? 'espaço' : sep}
+                      {sep === ' ' ? tr("espaço") : sep}
                     </button>
                   ))}
                 </div>

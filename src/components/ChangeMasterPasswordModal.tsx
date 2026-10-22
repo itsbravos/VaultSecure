@@ -3,6 +3,7 @@ import { KeyRound, Eye, EyeOff, Lock, CheckCircle2, AlertCircle, ShieldCheck, X 
 import { calculatePasswordStrength } from '../lib/crypto';
 import { getAccent, getTheme } from '../lib/theme';
 import { VaultSettings } from '../types';
+import { tr } from '../lib/i18n';
 
 interface ChangeMasterPasswordModalProps {
   isOpen: boolean;
@@ -40,22 +41,22 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
     setErrorMsg(null);
 
     if (!currentPassword) {
-      setErrorMsg('Por favor, informe sua senha mestra atual.');
+      setErrorMsg(tr("Por favor, informe sua senha mestra atual."));
       return;
     }
 
     if (newPassword.length < 8) {
-      setErrorMsg('A nova senha mestra deve conter no mínimo 8 caracteres.');
+      setErrorMsg(tr("A nova senha mestra deve conter no mínimo 8 caracteres."));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setErrorMsg('A confirmação da nova senha não coincide.');
+      setErrorMsg(tr("A confirmação da nova senha não coincide."));
       return;
     }
 
     if (currentPassword === newPassword) {
-      setErrorMsg('A nova senha não pode ser idêntica à senha atual.');
+      setErrorMsg(tr("A nova senha não pode ser idêntica à senha atual."));
       return;
     }
 
@@ -67,7 +68,7 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
       setConfirmPassword('');
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Senha mestra atual incorreta. Tente novamente.');
+      setErrorMsg(err.message || tr("Senha mestra atual incorreta. Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }
@@ -78,14 +79,14 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
       <div className={`w-full max-w-md ${theme.bgCard} ${theme.borderMain} border rounded-2xl p-6 shadow-2xl relative space-y-5 transition-colors`}>
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-800/40 pb-4">
+        <div className="flex items-center justify-between border-b border-[#2C4A50]/40 pb-4">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/30 flex items-center justify-center shrink-0`}>
               <KeyRound className="w-5 h-5" />
             </div>
             <div>
-              <h3 className={`text-base font-bold ${theme.textPrimary}`}>Alterar Senha Mestra</h3>
-              <p className={`text-xs ${theme.textMuted} font-mono`}>Re-criptografa todo o cofre com nova chave</p>
+              <h3 className={`text-base font-bold ${theme.textPrimary}`}>{tr("Alterar Senha Mestra")}</h3>
+              <p className={`text-xs ${theme.textMuted}`}>{tr("Re-criptografa todo o cofre com nova chave")}</p>
             </div>
           </div>
           <button
@@ -97,7 +98,7 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-500 font-mono flex items-center gap-2">
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-500 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
@@ -107,16 +108,16 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
           
           {/* Current Password */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono flex items-center gap-1`}>
-              <Lock className="w-3.5 h-3.5 text-amber-500" /> Senha Mestra Atual
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1`}>
+              <Lock className="w-3.5 h-3.5 text-amber-500" /> {tr("Senha Mestra Atual")}
             </label>
             <div className="relative">
               <input
                 type={showCurrent ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
-                placeholder="Sua senha mestra atual..."
-                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono`}
+                placeholder={tr("Sua senha mestra atual...")}
+                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent}`}
               />
               <button
                 type="button"
@@ -130,16 +131,16 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
 
           {/* New Password */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono flex items-center gap-1`}>
-              <ShieldCheck className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Nova Senha Mestra
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1`}>
+              <ShieldCheck className={`w-3.5 h-3.5 ${accent.textAccent}`} /> {tr("Nova Senha Mestra")}
             </label>
             <div className="relative">
               <input
                 type={showNew ? 'text' : 'password'}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres..."
-                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono`}
+                placeholder={tr("Mínimo 8 caracteres...")}
+                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent}`}
               />
               <button
                 type="button"
@@ -153,13 +154,13 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
             {/* Strength Meter */}
             {newPassword && (
               <div className="space-y-1 pt-1">
-                <div className="flex items-center justify-between text-[10px] font-mono">
+                <div className="flex items-center justify-between text-xs">
                   <span className={theme.textMuted}>Entropia: {newPassScore.score}%</span>
                   <span className={newPassScore.score > 70 ? 'text-emerald-500 font-bold' : newPassScore.score > 40 ? 'text-amber-500 font-bold' : 'text-red-500 font-bold'}>
-                    {newPassScore.label}
+                    {tr(newPassScore.label)}
                   </span>
                 </div>
-                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-[#183238] rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all ${
                       newPassScore.score > 70 ? 'bg-emerald-500' : newPassScore.score > 40 ? 'bg-amber-500' : 'bg-red-500'
@@ -173,16 +174,16 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
 
           {/* Confirm New Password */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-semibold ${theme.textSecondary} font-mono flex items-center gap-1`}>
-              <CheckCircle2 className={`w-3.5 h-3.5 ${accent.textAccent}`} /> Confirmar Nova Senha
+            <label className={`text-xs font-semibold ${theme.textSecondary} flex items-center gap-1`}>
+              <CheckCircle2 className={`w-3.5 h-3.5 ${accent.textAccent}`} /> {tr("Confirmar Nova Senha")}
             </label>
             <div className="relative">
               <input
                 type={showConfirm ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="Digite novamente a nova senha..."
-                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent} font-mono`}
+                placeholder={tr("Digite novamente a nova senha...")}
+                className={`w-full pl-3 pr-10 py-2.5 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none ${accent.ringAccent} ${accent.borderAccent}`}
               />
               <button
                 type="button"
@@ -195,14 +196,14 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
           </div>
 
           {/* Buttons */}
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-800/40">
+          <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#2C4A50]/40">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold font-mono ${theme.textMuted} ${theme.hoverBg} transition-colors cursor-pointer`}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold ${theme.textMuted} ${theme.hoverBg} transition-colors cursor-pointer`}
             >
-              Cancelar
+              {tr("Cancelar")}
             </button>
             <button
               type="submit"
@@ -210,7 +211,7 @@ export const ChangeMasterPasswordModal: React.FC<ChangeMasterPasswordModalProps>
               className={`px-5 py-2.5 ${accent.bgBtn} ${accent.bgBtnHover} text-white font-bold text-xs rounded-xl ${accent.shadowAccent} flex items-center gap-2 cursor-pointer disabled:opacity-50`}
             >
               <KeyRound className="w-4 h-4" />
-              <span>{isSubmitting ? 'Atualizando Criptografia...' : 'Salvar Nova Senha'}</span>
+              <span>{isSubmitting ? tr("Atualizando Criptografia...") : tr("Salvar Nova Senha")}</span>
             </button>
           </div>
 

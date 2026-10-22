@@ -26,8 +26,9 @@ import {
 import { motion } from 'framer-motion';
 import { VaultItem, ItemCategory, SecurityReport, VaultSettings } from '../types';
 import { calculatePasswordStrength, isLocalLeakedPassword, checkPasswordBreachOnline } from '../lib/crypto';
-import { getAccent, getTheme } from '../lib/theme';
+import { getAccent, getTheme, getSignals } from '../lib/theme';
 import { ItemIcon } from './ItemIcon';
+import { tr } from '../lib/i18n';
 
 interface VaultItemListProps {
   items: VaultItem[];
@@ -40,6 +41,8 @@ interface VaultItemListProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   onOpenAddItem?: () => void;
+  searchInputRef?: React.Ref<HTMLInputElement>;
+  onOpenBrowserImport?: () => void;
 }
 
 export const VaultItemList: React.FC<VaultItemListProps> = ({
@@ -53,12 +56,15 @@ export const VaultItemList: React.FC<VaultItemListProps> = ({
   searchQuery,
   onSearchChange,
   onOpenAddItem,
+  searchInputRef,
+  onOpenBrowserImport,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   const theme = getTheme(settings?.theme);
   const accent = getAccent(settings?.accentColor, theme.isLight);
+  const signal = getSignals(theme.isLight);
   const [onlineLeakedMap, setOnlineLeakedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -98,99 +104,137 @@ export const VaultItemList: React.FC<VaultItemListProps> = ({
 
   const getCategoryLabel = (category: ItemCategory) => {
     switch (category) {
-      case 'login': return 'Login / Email';
-      case 'card': return 'Cartão de Crédito';
-      case 'note': return 'Nota Segura';
-      case 'certificate': return 'Certificado Digital';
-      case 'api_key': return 'Chave API / SSH';
+      case 'login': return tr("Login");
+      case 'card': return tr("Cartão");
+      case 'note': return tr("Nota segura");
+      case 'certificate': return tr("Certificado");
+      case 'api_key': return tr("Chave API");
     }
   };
 
+  const getIssue = (item: VaultItem) => {
+    const isLeaked = Boolean(
+      (item.password && isLocalLeakedPassword(item.password)) ||
+      onlineLeakedMap[item.id] ||
+      securityReport?.leakedItems?.some(i => i.id === item.id)
+    );
+    if (isLeaked) return { kind: 'leaked' as const, label: tr("Vazada"), hint: tr("Esta senha apareceu em vazamentos públicos. Troque-a."), icon: ShieldAlert, tone: signal.dangerText, edge: signal.dangerBg };
+
+    const isWeak = Boolean(
+      (item.password && calculatePasswordStrength(item.password).score < 50) ||
+      securityReport?.weakItems?.some(i => i.id === item.id)
+    );
+    if (isWeak) return { kind: 'weak' as const, label: tr("Fraca"), hint: tr("Senha fácil de adivinhar. Gere uma mais forte."), icon: AlertTriangle, tone: signal.warnText, edge: signal.warnBg };
+
+    if (securityReport?.reusedItems?.some(i => i.id === item.id)) {
+      return { kind: 'reused' as const, label: tr("Reutilizada"), hint: tr("Mesma senha usada em outra conta."), icon: AlertTriangle, tone: signal.warnText, edge: signal.warnBg };
+    }
+    return null;
+  };
+
+  // Four engraved ticks; filled count follows the strength score
+  const StrengthMeter = ({ score }: { score: number }) => {
+    const filled = score >= 80 ? 4 : score >= 60 ? 3 : score >= 40 ? 2 : 1;
+    const color = filled >= 3 ? signal.safeBg : filled === 2 ? signal.warnBg : signal.dangerBg;
+    return (
+      <span className="inline-flex gap-0.5" title={tr("Força: {p0}%", { p0: score })}>
+        {[0, 1, 2, 3].map(i => (
+          <span key={i} className={`w-3 h-1 rounded-full ${i < filled ? color : signal.trackBg}`} />
+        ))}
+      </span>
+    );
+  };
+
+  const subtitleOf = (item: VaultItem) => item.username || item.email || item.cardHolder || getCategoryLabel(item.category);
+
   return (
-    <div className="space-y-4">
-      {/* Top Controls & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Search Input Field */}
-        <div className="relative flex-1 max-w-md">
+    <div className="space-y-5 max-w-6xl">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="relative flex-1 max-w-xl">
           <Search className={`w-4 h-4 ${theme.textMuted} absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none`} />
           <input
-            type="text"
+            ref={searchInputRef}
+            type="search"
             value={searchQuery || ''}
             onChange={e => onSearchChange?.(e.target.value)}
-            placeholder="Buscar credenciais, logins, notas..."
-            className={`w-full pl-10 pr-9 py-2 ${theme.bgInput} border ${theme.borderMain} rounded-xl text-xs ${theme.textPrimary} placeholder:${theme.textMuted} focus:outline-none focus:ring-1 ${accent.ringAccent} ${accent.borderAccent} transition-all font-mono shadow-xs`}
+            placeholder={tr("Buscar por nome, usuário, site ou tag")}
+            aria-label={tr("Buscar itens")}
+            className={`w-full h-10 pl-10 pr-9 ${theme.bgInput} ${theme.inputDepth} rounded-lg text-sm ${theme.textPrimary} placeholder:opacity-60 focus:outline-none focus:ring-2 ${accent.ringAccent} transition`}
           />
           {searchQuery && (
             <button
               onClick={() => onSearchChange?.('')}
-              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer`}
-              title="Limpar busca"
+              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md ${theme.textMuted} ${theme.hoverBg} cursor-pointer`}
+              title={tr("Limpar busca")}
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* Count & View Mode Toggle */}
-        <div className={`flex items-center justify-between sm:justify-end gap-3 text-xs ${theme.textMuted} font-mono shrink-0`}>
-          <span>Exibindo <strong className={theme.textPrimary}>{items.length}</strong> {items.length === 1 ? 'registro' : 'registros'}</span>
-          <div className={`flex items-center gap-1 ${theme.bgCardInner} border ${theme.borderInner} p-1 rounded-lg`}>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === 'grid' ? `${accent.textAccent} font-bold` : `${theme.textMuted} hover:${theme.textPrimary}`
-              }`}
-              title="Grade de Credenciais"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === 'table' ? `${accent.textAccent} font-bold` : `${theme.textMuted} hover:${theme.textPrimary}`
-              }`}
-              title="Tabela de Credenciais"
-            >
-              <ListIcon className="w-4 h-4" />
-            </button>
+        <div className={`flex items-center justify-between sm:justify-end gap-3 text-[13px] ${theme.textMuted} sm:ml-auto`}>
+          <span className="tabular-nums">
+            {items.length} {items.length === 1 ? tr("item") : tr("itens")}
+          </span>
+          <div className={`flex items-center border ${theme.borderMain} rounded-lg p-0.5`}>
+            {([['grid', LayoutGrid, 'Cartões'], ['table', ListIcon, 'Tabela']] as const).map(([mode, Icon, label]) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  viewMode === mode ? `${theme.isLight ? 'bg-[#0E1F24]/[0.07]' : 'bg-[#183238]'} ${theme.textPrimary}` : `${theme.textMuted} ${theme.hoverBg}`
+                }`}
+                title={tr(label)}
+                aria-pressed={viewMode === mode}
+              >
+                <Icon className="w-4 h-4" />
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       {/* EMPTY STATE */}
       {items.length === 0 ? (
-        <div className={`flex flex-col items-center justify-center py-16 px-4 text-center space-y-4 ${theme.bgCard} rounded-2xl border ${theme.borderMain} shadow-sm`}>
-          <div className={`w-16 h-16 rounded-2xl ${theme.bgCardInner} border ${theme.borderInner} flex items-center justify-center text-cyan-400 shadow-inner`}>
-            {searchQuery ? <SearchX className="w-8 h-8 text-amber-400" /> : <Sparkles className="w-8 h-8 text-cyan-400" />}
+        <div className={`flex flex-col items-center justify-center py-20 px-4 text-center rounded-xl border border-dashed ${theme.borderMain}`}>
+          <div className={`w-12 h-12 rounded-full border ${theme.borderMain} flex items-center justify-center ${theme.textMuted} mb-4`}>
+            {searchQuery ? <SearchX className="w-5 h-5" /> : <Key className="w-5 h-5" />}
           </div>
-          <div className="space-y-1.5 max-w-sm">
-            <h3 className={`text-base font-bold ${theme.textPrimary}`}>
-              {searchQuery ? 'Nenhum resultado encontrado' : 'Nenhuma credencial nesta seção'}
-            </h3>
-            <p className={`text-xs ${theme.textMuted} font-mono leading-relaxed`}>
-              {searchQuery
-                ? `Nenhum registro corresponde à busca por "${searchQuery}".`
-                : 'Esta categoria do cofre está vazia no momento. Adicione um novo registro para protegê-lo com criptografia AES-GCM.'}
-            </p>
-          </div>
-
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3 font-mono">
+          <h3 className={`text-base font-semibold ${theme.textPrimary}`}>
+            {searchQuery ? tr("Nada encontrado para \"{p0}\"", { p0: searchQuery }) : tr("Nenhum item aqui ainda")}
+          </h3>
+          <p className={`text-sm ${theme.textMuted} mt-1 max-w-sm`}>
+            {searchQuery
+              ? tr("Tente outro termo ou limpe a busca para ver todos os itens.")
+              : tr("Adicione um login, cartão ou nota. Ele será criptografado antes de ser salvo.")}
+          </p>
+          <div className="mt-5">
             {searchQuery ? (
               <button
                 onClick={() => onSearchChange?.('')}
-                className={`px-4 py-2 rounded-xl ${accent.badgeBg} ${accent.badgeText} text-xs font-bold border ${accent.borderAccent} cursor-pointer hover:opacity-90 transition-opacity`}
+                className={`h-9 px-4 rounded-lg border ${theme.borderMain} ${theme.textSecondary} ${theme.hoverBg} text-[13px] font-medium cursor-pointer`}
               >
-                Limpar busca
+                {tr("Limpar busca")}
               </button>
             ) : (
               onOpenAddItem && (
+                <div className="flex flex-wrap justify-center gap-2">
+                {onOpenBrowserImport && (
+                  <button
+                    onClick={onOpenBrowserImport}
+                    className={`h-9 px-4 rounded-lg border ${theme.borderMain} ${theme.textSecondary} ${theme.hoverBg} text-[13px] font-medium cursor-pointer`}
+                  >
+                    {tr("Importar do navegador")}
+                  </button>
+                )}
                 <button
                   onClick={onOpenAddItem}
-                  className={`px-4 py-2 rounded-xl ${accent.bgBtn} ${accent.bgBtnHover} text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5`}
+                  className={`h-9 px-4 rounded-lg ${accent.bgBtn} ${accent.bgBtnHover} ${accent.shadowAccent} text-white text-[13px] font-semibold cursor-pointer`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Cadastrar Credencial</span>
+                  {tr("Adicionar item")}
                 </button>
+                </div>
               )
             )}
           </div>
@@ -200,304 +244,146 @@ export const VaultItemList: React.FC<VaultItemListProps> = ({
 
       {/* GRID VIEW */}
       {viewMode === 'grid' && (
-        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {items.map(item => {
             const isPasswordVisible = visiblePasswords[item.id];
             const passStrength = item.password ? calculatePasswordStrength(item.password) : null;
-            const badge = getItemBadgeStyle(item.title, item.category);
-
-            const isLeaked = Boolean(
-              (item.password && isLocalLeakedPassword(item.password)) ||
-              onlineLeakedMap[item.id] ||
-              securityReport?.leakedItems?.some(i => i.id === item.id)
-            );
-
-            const isWeak = Boolean(
-              (item.password && calculatePasswordStrength(item.password).score < 50) ||
-              securityReport?.weakItems?.some(i => i.id === item.id)
-            );
-
-            const isReused = Boolean(
-              securityReport?.reusedItems?.some(i => i.id === item.id)
-            );
+            const issue = getIssue(item);
+            const IssueIcon = issue?.icon;
 
             return (
-              <motion.div
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
+              <div
                 key={item.id}
                 onClick={() => onSelectItem(item)}
-                className={`group relative ${theme.bgCard} ${theme.hoverBg} border rounded-xl p-4 space-y-3 cursor-pointer transition-all ${theme.depthShadow} ${
-                  isLeaked
-                    ? 'border-orange-500/80 hover:border-orange-600'
-                    : isWeak || isReused
-                    ? 'border-amber-500/80 hover:border-amber-600'
-                    : `${theme.borderMain}`
-                }`}
+                className={`group relative overflow-hidden ${theme.bgCard} border ${theme.borderMain} rounded-xl p-4 cursor-pointer transition-colors ${theme.isLight ? 'hover:border-[#0E1F24]/25' : 'hover:border-[#3D5F65]'} ${theme.depthShadow}`}
               >
-                {/* Header Row */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <ItemIcon item={item} settings={settings} size="md" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <h4 className={`text-sm font-semibold ${theme.textPrimary} truncate group-hover:${accent.textAccent} transition-colors`}>
-                          {item.title}
-                        </h4>
-                        {isLeaked && (
-                          <span className="px-1.5 py-0.5 rounded bg-orange-500/10 border border-orange-500/30 text-orange-500 text-[10px] font-mono flex items-center gap-1 font-bold shrink-0 animate-pulse" title="Senha encontrada em vazamentos de dados na internet!">
-                            <ShieldAlert className="w-3.5 h-3.5 text-orange-500" /> Vazada
-                          </span>
-                        )}
-                        {!isLeaked && isWeak && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-mono flex items-center gap-1 font-bold shrink-0" title="Senha fraca identificada pela auditoria">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Fraca
-                          </span>
-                        )}
-                        {!isLeaked && !isWeak && isReused && (
-                          <span className="px-1.5 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[10px] font-mono flex items-center gap-1 font-bold shrink-0" title="Senha reutilizada em múltiplas contas">
-                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" /> Reutilizada
-                          </span>
-                        )}
-                      </div>
-                      <p className={`text-xs ${theme.textMuted} truncate font-mono`}>
-                        {item.username || item.email || item.cardHolder || getCategoryLabel(item.category)}
-                      </p>
-                    </div>
-                  </div>
+                {issue && <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${issue.edge}`} />}
 
+                {/* Header Row */}
+                <div className="flex items-start gap-3">
+                  <ItemIcon item={item} settings={settings} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <h4 className={`text-[15px] leading-snug font-semibold ${theme.textPrimary} line-clamp-2`} title={item.title}>{item.title}</h4>
+                    <p className={`text-[13px] ${theme.textMuted} truncate`}>{subtitleOf(item)}</p>
+                  </div>
                   <button
                     onClick={e => onToggleFavorite(item.id, e)}
-                    className={`${theme.textMuted} hover:text-amber-400 transition-colors p-1`}
-                    title={item.favorite ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+                    className={`p-1 -m-1 rounded-md transition-colors cursor-pointer ${
+                      item.favorite ? 'text-[#C9A54C]' : `${theme.textMuted} opacity-0 group-hover:opacity-100 focus:opacity-100`
+                    }`}
+                    title={item.favorite ? tr("Remover dos favoritos") : tr("Adicionar aos favoritos")}
                   >
-                    <Star className={`w-4 h-4 ${item.favorite ? 'fill-amber-400 text-amber-400' : ''}`} />
+                    <Star className={`w-4 h-4 ${item.favorite ? 'fill-current' : ''}`} />
                   </button>
                 </div>
 
-                {/* Password / Value Preview Field */}
+                {/* Secret preview */}
                 {item.category === 'login' && item.password && (
                   <div
                     onClick={e => e.stopPropagation()}
-                    className={`${theme.bgCardInner} border ${theme.borderInner} rounded-lg px-3 py-2 flex items-center justify-between text-xs font-mono`}
+                    className={`mt-3.5 ${theme.bgCardInner} border ${theme.borderInner} rounded-lg pl-3 pr-1 h-9 flex items-center justify-between font-mono text-[13px]`}
                   >
-                    <span className={`${theme.textPrimary} truncate tracking-widest`}>
-                      {isPasswordVisible ? item.password : '••••••••••••••••'}
+                    <span className={`${theme.textSecondary} truncate ${isPasswordVisible ? '' : 'tracking-[0.2em]'}`}>
+                      {isPasswordVisible ? item.password : '••••••••••••'}
                     </span>
-
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <div className="flex items-center shrink-0">
                       <button
                         onClick={e => togglePasswordVisibility(item.id, e)}
-                        className={`${theme.textMuted} hover:${theme.textPrimary} p-1`}
-                        title={isPasswordVisible ? 'Ocultar' : 'Revelar'}
+                        className={`${theme.textMuted} ${theme.hoverBg} p-1.5 rounded-md cursor-pointer`}
+                        title={isPasswordVisible ? tr("Ocultar senha") : tr("Mostrar senha")}
                       >
                         {isPasswordVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
-
                       <button
                         onClick={() => onCopyText(item.password!, 'Senha')}
-                        className={`${accent.textAccent} hover:opacity-80 text-xs font-semibold p-1 transition-colors`}
-                        title="Copiar Senha"
+                        className={`${copiedId === item.password ? accent.textAccent : theme.textMuted} ${theme.hoverBg} p-1.5 rounded-md cursor-pointer`}
+                        title={tr("Copiar senha")}
                       >
-                        {copiedId === item.password ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedId === item.password ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Immediate Action Security Alert Banner */}
-                {isLeaked && (
-                  <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-between text-xs font-mono text-orange-500">
-                    <span className="flex items-center gap-1.5 text-[11px] font-bold">
-                      <ShieldAlert className="w-4 h-4 text-orange-500 shrink-0 animate-pulse" />
-                      Senha Vazada na Internet!
-                    </span>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onSelectItem(item);
-                      }}
-                      className="px-2 py-0.5 rounded bg-orange-500 text-white font-bold text-[10px] transition-colors hover:bg-orange-600"
-                      title="Clique para alterar e resolver este problema"
-                    >
-                      Alterar Agora
-                    </button>
-                  </div>
-                )}
-
-                {!isLeaked && isWeak && (
-                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs font-mono text-amber-500">
-                    <span className="flex items-center gap-1.5 text-[11px] font-bold">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                      Senha Fraca Identificada
-                    </span>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onSelectItem(item);
-                      }}
-                      className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold text-[10px] transition-colors hover:bg-amber-600"
-                      title="Clique para alterar e fortalecer"
-                    >
-                      Ação Imediata
-                    </button>
-                  </div>
-                )}
-
-                {/* Credit Card Mask Preview */}
                 {item.category === 'card' && item.cardNumber && (
-                  <div className={`${theme.bgCardInner} border ${theme.borderInner} rounded-lg px-3 py-2 text-xs font-mono flex items-center justify-between ${theme.textPrimary}`}>
+                  <div className={`mt-3.5 ${theme.bgCardInner} border ${theme.borderInner} rounded-lg px-3 h-9 font-mono text-[13px] flex items-center justify-between ${theme.textSecondary}`}>
                     <span>{item.cardNumber}</span>
-                    <span className={`text-[10px] ${theme.textMuted}`}>{item.cardExpiry}</span>
+                    <span className={theme.textMuted}>{item.cardExpiry}</span>
                   </div>
                 )}
 
-                {/* Footer Tags & Strength (UNCLIPPED FULL WRAP / TRUNCATED SAFELY) */}
-                <div className={`flex items-center justify-between text-[11px] pt-1 ${theme.textMuted} font-mono gap-2`}>
-                  <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-[75%]">
-                    {item.tags.map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className={`${theme.bgCardInner} ${theme.textSecondary} px-2 py-0.5 rounded text-[10px] border ${theme.borderInner} truncate max-w-[130px] inline-block`}
-                        title={`#${tag}`}
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  {passStrength && (
-                    <span className={`text-[10px] font-semibold shrink-0 ${passStrength.color.split(' ')[0]}`}>
-                      {passStrength.label}
+                {/* Footer: issue or tags + strength */}
+                <div className="mt-3.5 flex items-center justify-between gap-3 text-xs min-h-[20px]">
+                  {issue && IssueIcon ? (
+                    <span className={`flex items-center gap-1.5 font-medium ${issue.tone}`} title={issue.hint}>
+                      <IssueIcon className="w-3.5 h-3.5 shrink-0" />
+                      {tr("Senha")} {issue.label.toLowerCase()}
+                    </span>
+                  ) : (
+                    <span className={`${theme.textMuted} truncate`}>
+                      {item.tags.length > 0 ? item.tags.join(', ') : getCategoryLabel(item.category)}
                     </span>
                   )}
+                  {passStrength && <StrengthMeter score={passStrength.score} />}
                 </div>
-
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       )}
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (
-        <motion.div layout className={`${theme.bgCard} border ${theme.borderMain} rounded-xl overflow-hidden shadow-sm`}>
+        <div className={`${theme.bgCard} border ${theme.borderMain} rounded-xl overflow-hidden`}>
           <div className="overflow-x-auto">
-            <table className={`w-full text-left text-xs ${theme.textSecondary}`}>
-              <thead className={`${theme.bgCardInner} ${theme.textMuted} uppercase font-mono text-[10px] tracking-wider border-b ${theme.borderInner}`}>
+            <table className={`w-full text-left text-[13px] ${theme.textSecondary}`}>
+              <thead className={`${theme.textMuted} text-xs border-b ${theme.borderMain}`}>
                 <tr>
-                  <th className="py-3 px-4">Item / Credencial</th>
-                  <th className="py-3 px-4">Categoria</th>
-                  <th className="py-3 px-4">Login / Informação</th>
-                  <th className="py-3 px-4">Segurança / Alertas</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+                  <th className="py-2.5 px-4 font-medium">{tr("Nome")}</th>
+                  <th className="py-2.5 px-4 font-medium">{tr("Tipo")}</th>
+                  <th className="py-2.5 px-4 font-medium">{tr("Usuário")}</th>
+                  <th className="py-2.5 px-4 font-medium">{tr("Segurança")}</th>
+                  <th className="py-2.5 px-4" />
                 </tr>
               </thead>
-              <tbody className={`divide-y ${theme.borderInner}`}>
+              <tbody className={`divide-y ${theme.divideInner}`}>
                 {items.map(item => {
                   const passStrength = item.password ? calculatePasswordStrength(item.password) : null;
-                  const badge = getItemBadgeStyle(item.title, item.category);
-
-                  const isLeaked = Boolean(
-                    (item.password && isLocalLeakedPassword(item.password)) ||
-                    onlineLeakedMap[item.id] ||
-                    securityReport?.leakedItems?.some(i => i.id === item.id)
-                  );
-
-                  const isWeak = Boolean(
-                    (item.password && calculatePasswordStrength(item.password).score < 50) ||
-                    securityReport?.weakItems?.some(i => i.id === item.id)
-                  );
-
-                  const isReused = Boolean(
-                    securityReport?.reusedItems?.some(i => i.id === item.id)
-                  );
+                  const issue = getIssue(item);
+                  const IssueIcon = issue?.icon;
 
                   return (
-                    <tr
-                      key={item.id}
-                      onClick={() => onSelectItem(item)}
-                      className={`${theme.hoverBg} cursor-pointer transition-colors`}
-                    >
-                      <td className={`py-3 px-4 font-semibold ${theme.textPrimary}`}>
+                    <tr key={item.id} onClick={() => onSelectItem(item)} className={`${theme.hoverBg} cursor-pointer transition-colors`}>
+                      <td className={`py-2.5 px-4 font-medium ${theme.textPrimary}`}>
                         <div className="flex items-center gap-3">
-                          <button
-                            onClick={e => onToggleFavorite(item.id, e)}
-                            className={`${theme.textMuted} hover:text-amber-400`}
-                          >
-                            <Star className={`w-3.5 h-3.5 ${item.favorite ? 'fill-amber-400 text-amber-400' : ''}`} />
-                          </button>
                           <ItemIcon item={item} settings={settings} size="sm" />
-                          <span>{item.title}</span>
-                          {isLeaked && (
-                            <ShieldAlert className="w-4 h-4 text-orange-500 animate-pulse shrink-0" title="Senha Vazada na Internet" />
-                          )}
-                          {!isLeaked && (isWeak || isReused) && (
-                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" title="Alerta de Segurança" />
-                          )}
+                          <span className="truncate">{item.title}</span>
+                          {item.favorite && <Star className="w-3.5 h-3.5 text-[#C9A54C] fill-current shrink-0" />}
                         </div>
                       </td>
-
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded ${theme.bgCardInner} border ${theme.borderInner} text-[11px] font-mono ${theme.textMuted}`}>
-                          {getCategoryLabel(item.category)}
-                        </span>
+                      <td className={`py-2.5 px-4 ${theme.textMuted}`}>{getCategoryLabel(item.category)}</td>
+                      <td className={`py-2.5 px-4 ${theme.textMuted} truncate max-w-[220px]`}>{item.username || item.email || item.cardHolder || '—'}</td>
+                      <td className="py-2.5 px-4">
+                        {issue && IssueIcon ? (
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${issue.tone}`} title={issue.hint}>
+                            <IssueIcon className="w-3.5 h-3.5" /> {issue.label}
+                          </span>
+                        ) : passStrength ? (
+                          <StrengthMeter score={passStrength.score} />
+                        ) : (
+                          <span className={theme.textMuted}>—</span>
+                        )}
                       </td>
-
-                      <td className={`py-3 px-4 font-mono ${theme.textMuted}`}>
-                        {item.username || item.email || item.cardHolder || '—'}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {isLeaked ? (
-                            <span className="px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/30 text-orange-500 text-[10px] font-mono font-bold flex items-center gap-1">
-                              <ShieldAlert className="w-3 h-3 text-orange-500" /> Vazada
-                            </span>
-                          ) : isWeak ? (
-                            <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-mono font-bold flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3 text-amber-500" /> Fraca
-                            </span>
-                          ) : isReused ? (
-                            <span className="px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[10px] font-mono font-bold flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3 text-yellow-500" /> Reutilizada
-                            </span>
-                          ) : passStrength ? (
-                            <span className={`text-[10px] font-mono font-semibold ${passStrength.color.split(' ')[0]}`}>
-                              {passStrength.label} ({passStrength.score}%)
-                            </span>
-                          ) : (
-                            <span className={`text-[10px] ${theme.textMuted} font-mono`}>—</span>
-                          )}
-
-                          {(isLeaked || isWeak || isReused) && (
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                onSelectItem(item);
-                              }}
-                              className="text-[10px] font-mono font-bold text-amber-500 underline hover:text-amber-600"
-                            >
-                              Ação
-                            </button>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-                          {item.password && (
-                            <button
-                              onClick={() => onCopyText(item.password!, 'Senha')}
-                              className={`${accent.textAccent} hover:opacity-80 text-xs font-semibold p-1`}
-                              title="Copiar Senha"
-                            >
-                              COPIAR
-                            </button>
-                          )}
-                        </div>
+                      <td className="py-2.5 px-4 text-right" onClick={e => e.stopPropagation()}>
+                        {item.password && (
+                          <button
+                            onClick={() => onCopyText(item.password!, 'Senha')}
+                            className={`${theme.textMuted} ${theme.hoverBg} p-1.5 rounded-md cursor-pointer`}
+                            title={tr("Copiar senha")}
+                          >
+                            {copiedId === item.password ? <Check className={`w-3.5 h-3.5 ${accent.textAccent}`} /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -505,11 +391,10 @@ export const VaultItemList: React.FC<VaultItemListProps> = ({
               </tbody>
             </table>
           </div>
-        </motion.div>
+        </div>
       )}
         </>
       )}
     </div>
   );
 };
-
