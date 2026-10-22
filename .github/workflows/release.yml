@@ -1,0 +1,70 @@
+name: Release
+
+# Push a tag like v1.2.3 to build the desktop installers on each OS and publish
+# them as a GitHub Release. Notes come from docs/releases/<tag>.md when present.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            script: electron:build:win
+            args: ''
+          - os: macos-latest
+            script: electron:build:mac
+            args: '--x64 --arm64'
+          - os: ubuntu-latest
+            script: electron:build:linux
+            args: ''
+    runs-on: ${{ matrix.os }}
+    env:
+      # Installers are not code-signed yet; don't let electron-builder go looking for a certificate
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run ${{ matrix.script }} -- ${{ matrix.args }} --publish never
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/$TAG.md"
+          if [ -f "$notes" ]; then flags=(--notes-file "$notes"); else flags=(--generate-notes); fi
+          gh release create "$TAG" out/* --title "VaultSecure $TAG" "${flags[@]}"
