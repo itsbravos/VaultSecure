@@ -1,151 +1,175 @@
-# 🔐 VaultSecure - Cofre de Senhas Criptografado & Zero-Knowledge
+# VaultSecure
 
-O **VaultSecure** é um gerenciador de senhas moderno, local e de conhecimento zero (Zero-Knowledge). Todos os dados são criptografados no próprio dispositivo do usuário antes de qualquer armazenamento.
+**A password manager that keeps everything on your device.** No account, no server, no one else's cloud. Your passwords are encrypted in your browser before they're ever stored.
 
----
+<p align="center">
+  <a href="docs/media/vaultsecure-demo.mp4">
+    <img src="docs/media/vaultsecure-preview.gif" alt="VaultSecure in action: unlocking the vault, the item list and the browser import" width="720">
+  </a>
+  <br>
+  <a href="docs/media/vaultsecure-demo.mp4"><strong>▶ Watch the full video (21 s)</strong></a>
+</p>
 
-## 🚀 Como Instalar e Rodar Localmente (PC / Servidor)
-
-Para rodar o VaultSecure no seu computador localmente a partir deste repositório do GitHub:
-
-### Requisitos
-- **Node.js** (versão 18 ou superior)
-- **npm** ou **yarn**
-
-### Passo a Passo
-1. **Clonar o Repositório:**
-   ```bash
-   git clone https://github.com/itsbravos/VaultSecure.git
-   cd VaultSecure
-   ```
-
-2. **Instalar Dependências:**
-   ```bash
-   npm install
-   ```
-
-3. **Executar em Modo de Desenvolvimento:**
-   ```bash
-   npm run dev
-   ```
-   Acesse no navegador: `http://localhost:3000` (ou na porta indicada no terminal).
-
-4. **Gerar Versão de Produção (Build Estático):**
-   ```bash
-   npm run build
-   ```
-   Os arquivos compilados ficarão na pasta `dist/` para servir em qualquer servidor web ou usar offline.
-
-5. **Instalar como Aplicativo no PC (Windows/Mac/Linux):**
-   O VaultSecure é um PWA (Progressive Web App) com Service Worker — funciona instalado, com ícone próprio, janela separada e cache offline dos arquivos da aplicação.
-
-   > ⚠️ O botão de instalar e o Service Worker só ficam ativos em build de produção (`npm run dev` roda sem eles, para não atrapalhar o hot-reload). Além disso, o navegador só permite instalar/registrar Service Worker em contexto seguro: **HTTPS** ou **`localhost`**.
-
-   ```bash
-   npm run build
-   npm run preview
-   ```
-   Abra `http://localhost:4173` no Chrome ou Edge e clique no ícone de **instalar** (⊕) que aparece na barra de endereço, ou no menu **⋮ > Instalar VaultSecure**. O app passa a abrir em janela própria, com ícone na área de trabalho/menu iniciar, e continua funcionando **offline** depois do primeiro carregamento.
+**[English](#english)** · **[Português](#português)**
 
 ---
 
-## 🖥️ App Desktop Nativo (Electron)
+## English
 
-Além do PWA, o repositório também gera um instalador desktop nativo de verdade (`.exe` / `.AppImage` / `.dmg`), que roda sem depender do navegador nem de nenhum servidor em segundo plano — o build fica todo empacotado dentro do próprio executável.
+### What it does
 
-### Rodar em modo desenvolvimento (janela Electron + hot-reload do Vite)
-```bash
-npm run electron:dev
-```
+VaultSecure stores your logins, cards, secure notes and API keys in an encrypted vault that lives only on your device. It runs in the browser, installs as an app (PWA or desktop), and works offline.
 
-### Gerar o instalador de produção
-```bash
-npm run electron:build          # gera para o SO atual
-npm run electron:build:win      # instalador Windows (.exe via NSIS)
-npm run electron:build:mac      # instalador macOS (.dmg)
-npm run electron:build:linux    # AppImage Linux
-```
-Os arquivos gerados ficam na pasta `release/`. Basta distribuir/instalar esse arquivo — a partir daí o app abre direto, sem terminal e sem servidor.
+- **Three separate vaults:** Personal, Work and Shared, each with its own items.
+- **Import from your browser:** bring in the passwords saved in Chrome, Edge, Brave, Opera, Firefox or Safari (or a Bitwarden, LastPass or 1Password CSV). You review every row, see duplicates and weak passwords, and pick the vault for each one. Nothing already in your vault is changed or removed.
+- **Vault health:** a score out of 100 and a list of what to fix first: leaked, weak and reused passwords. The online breach check uses Have I Been Pwned with k-anonymity, so your password never leaves the device.
+- **Sync between devices without a server:** choose a folder you already sync (Syncthing, OneDrive, Google Drive, Dropbox) and VaultSecure keeps an encrypted file there, up to date. Edits, new items and deletions reach your other devices.
+- **Backups:** export one vault or all of them to an encrypted `.vault` file, and restore it on another device, even on the very first screen, before creating a vault.
+- **Password generator:** long random passwords or easy-to-type passphrases.
+- **Extra protection:** two-step verification (TOTP), an optional X.509 digital certificate to unlock, auto-lock when idle, clipboard auto-clear, a limit on wrong attempts, and a duress password that opens a decoy vault.
+- **English and Portuguese**, chosen the first time you open your vault and changeable in Settings. Four themes and six accent colors.
 
-> O código React/Vite é o mesmo usado no PWA e no site; o Electron só adiciona uma janela nativa (`electron/main.cjs`) que carrega o build já pronto (`dist/index.html`) via `file://`.
+### How your data is protected
 
----
+- **Zero-knowledge.** Your master password is never stored or sent anywhere. If you forget it, no one can recover the vault.
+- **Key derivation:** PBKDF2 (HMAC-SHA256, 250,000 iterations) with a random 16-byte salt per vault.
+- **Encryption:** AES-256-GCM with a fresh 96-bit IV for every save, using the browser's Web Crypto API.
+- **Sync and backup files** are encrypted the same way. Anyone who gets the file sees only random bytes.
 
-## 📱 Como Instalar no Celular Android (A partir do Repositório GitHub)
+### Getting started
 
-Como o projeto é hospedado diretamente no **GitHub sem um site de terceiros**, você tem 3 opções simples e 100% gratuitas para instalar o VaultSecure no seu celular Android:
-
-### 🌟 Método 1: Via GitHub Pages Grátis (Mais Recomendado)
-O repositório já inclui um workflow (`.github/workflows/deploy-pages.yml`) que builda e publica o app automaticamente a cada push na `main`. Só falta habilitar o Pages uma única vez:
-1. No seu repositório do GitHub, vá em **Settings > Pages**.
-2. Em **Source**, selecione **GitHub Actions** (não branch `main`/`gh-pages` — o workflow já cuida do build, incluindo o caminho correto `/VaultSecure/` para os assets e o manifest do PWA).
-3. Aguarde a Action **"Deploy to GitHub Pages"** rodar (aba **Actions** do repositório). Ao terminar, o GitHub mostrará a URL segura com HTTPS: `https://itsbravos.github.io/VaultSecure/`.
-4. Abra esse link no **Google Chrome** do seu Android.
-5. Toque nos **⋮ (3 pontinhos)** do Chrome no canto superior direito e selecione **"Instalar aplicativo"** ou **"Adicionar à tela inicial"**.
-6. O VaultSecure será instalado no seu Android como um app (PWA), com ícone próprio, rodando em tela cheia e funcionando **offline** depois do primeiro carregamento (o Service Worker faz cache dos arquivos da aplicação).
-
----
-
-### 📶 Método 2: Via Rede Wi-Fi Local do Computador
-Se você não quiser publicar no GitHub Pages:
-1. No seu computador com o repositório clonado, gere o build de produção e sirva-o na rede local:
-   ```bash
-   npm run build
-   npm run preview -- --host
-   ```
-2. O terminal exibirá o endereço IP local (exemplo: `http://192.168.1.15:4173`).
-3. No celular Android (conectado na mesma rede Wi-Fi do computador), abra o Chrome e acesse o endereço IP.
-4. Toque no menu do Chrome **(⋮)** e clique em **"Instalar aplicativo"** ou **"Adicionar à tela inicial"**.
-
-   > ⚠️ Navegadores só permitem instalar o app e ativar o cache offline (Service Worker) em contexto seguro (**HTTPS** ou **localhost**). Um IP puro na rede local (`http://192.168.x.x`) normalmente **não** conta como seguro — o Chrome pode abrir o site normalmente, mas sem o botão de instalar nem cache offline. Para instalação de verdade no celular, prefira o **Método 1** (GitHub Pages, já em HTTPS) ou o **Método 3** (APK nativo).
-
----
-
-### 📦 Método 3: Gerar APK Nativo para Android (Capacitor)
-O repositório está pronto para ser compilado em arquivo `.apk` Android:
-1. Instale o Capacitor CLI: `npm install @capacitor/core @capacitor/cli @capacitor/android`
-2. Adicione a plataforma Android: `npx cap add android`
-3. Abra e compile no Android Studio: `npx cap open android` -> *Build APK*.
-
----
-
-## 🔄 Como Transferir / Sincronizar Senhas Entre Dispositivos (Ex: PC ➔ Celular ou PC ➔ PC)
-
-Como o VaultSecure opera em modelo **100% Local / Zero-Server**, a sincronização é feita com máxima privacidade via backup criptografado:
-
-1. **No dispositivo de origem (ex: PC 1):**
-   - Vá no menu de engrenagem **(Configurações)** ou clique no botão **Fazer Backup / Exportar**.
-   - Escolha **Exportação Criptografada (.vault)**.
-   - Será baixado um arquivo contendo todo o seu cofre.
-
-2. **Segurança do Arquivo `.vault`:**
-   - O arquivo `.vault` é **fortemente criptografado com AES-256-GCM** usando a sua Senha Mestra + Salt PBKDF2 de 250.000 iterações. Cada cofre gera seu próprio salt aleatório de 16 bytes na criação (via `window.crypto.getRandomValues`), nunca reaproveitado entre instalações — o que evita ataques com rainbow tables pré-computadas.
-   - Você pode enviar este arquivo com segurança por e-mail, WhatsApp, pendrive, Google Drive ou Bluetooth: **ninguém conseguirá abrir sem a sua Senha Mestra**.
-
-3. **No dispositivo de destino (ex: Celular Android ou PC 2):**
-   - Abra o VaultSecure.
-   - Na tela de login ou nas Configurações, clique em **"Importar / Restaurar Cofre"**.
-   - Selecione o arquivo `.vault` e digite a sua Senha Mestra para descriptografar os dados no novo dispositivo.
-
----
-
-## 🧪 Testes
-
-O projeto usa [Vitest](https://vitest.dev) para testes unitários, cobrindo principalmente a lógica de criptografia (`src/lib/crypto.ts`): derivação de chave via PBKDF2, round-trip de criptografia/descriptografia AES-256-GCM, geração de salt/IV e força de senha.
+Requirements: **Node.js 18+** and npm.
 
 ```bash
-npm test              # roda a suíte uma vez
-npm run test:watch    # modo watch
-npm run test:coverage # com relatório de cobertura
+git clone https://github.com/itsbravos/VaultSecure.git
+cd VaultSecure
+npm install
+npm run dev        # http://localhost:3000
 ```
+
+The first screen lets you **create a vault** or **restore a backup** from another device. After that, a short tour shows where everything is.
+
+#### Install it as an app
+
+- **PWA (Windows, macOS, Linux, Android):** build and preview, then use the install icon in Chrome or Edge's address bar.
+  ```bash
+  npm run build
+  npm run preview    # http://localhost:4173
+  ```
+  Browsers only allow installing and offline caching over **HTTPS** or on **localhost**.
+- **GitHub Pages:** the included workflow (`.github/workflows/deploy-pages.yml`) publishes the app on every push to `main`. Turn it on once in **Settings › Pages › Source: GitHub Actions**, then open the HTTPS address on your phone and choose **Install app**.
+- **Desktop app (Electron):**
+  ```bash
+  npm run electron:dev             # Electron window with hot reload
+  npm run electron:build           # installer for the current OS, in release/
+  npm run electron:build:win       # .exe (NSIS)
+  npm run electron:build:mac       # .dmg
+  npm run electron:build:linux     # AppImage
+  ```
+
+### Import your passwords from the browser
+
+1. Go to **Backup › Import passwords from your browser** (or **Import from browser** on the home screen).
+2. Pick your browser. The app shows where its export option is. In Chrome, for example, open `chrome://password-manager/settings` and choose **Export passwords**.
+3. Drop the `.csv` file in, review the rows, choose a vault for each one and import.
+4. **Delete the exported `.csv` afterwards.** It contains every password unencrypted.
+
+### Sync between devices
+
+- **Chrome or Edge on a computer (automatic):** in **Settings › Sync between devices**, click **Choose folder** and pick a folder that's already synced. Do the same on your other computers. The first time a second device connects, it asks for the master password used on the first one, once, to link them.
+- **Phones, Firefox and Safari (manual):** these browsers can't access folders, so use **Merge file** to bring in the sync file and **Download updated file** to send your changes back.
+
+### Tests
+
+```bash
+npm test               # run once
+npm run test:watch
+npm run test:coverage
+```
+
+The suite covers the encryption (PBKDF2, AES-GCM round trips), the browser CSV importer, the sync merge, and a two-device sync simulation with real encryption.
+
+### License
+
+[MIT](LICENSE)
 
 ---
 
-## 🛡️ Arquitetura de Segurança
+## Português
 
-- **Zero-Knowledge**: A Senha Mestra nunca é enviada para nenhum servidor nem armazenada em texto puro.
-- **Derivação de Chaves**: PBKDF2 com HMAC-SHA256 e 250.000 iterações, com salt aleatório de 16 bytes único por cofre.
-- **Criptografia Simétrica**: AES-256-GCM com IV aleatório de 96-bits para cada registro.
-- **Verificação de Vazamentos (k-Anonymity)**: Consulta a base do *HaveIBeenPwned* utilizando apenas os primeiros 5 caracteres do hash SHA-1 da senha, mantendo a privacidade total.
-- **Gerador de TOTP (2FA)**: Suporte integrado para códigos de autenticação de dois fatores.
-- **Certificados Digitais (PKI)**: Suporte a par de chaves RSA 2048-bit / X.509 para assinar e validar acessos corporativos ou pessoais.
+### O que o app faz
+
+O VaultSecure guarda seus logins, cartões, notas seguras e chaves de API num cofre criptografado que fica só no seu aparelho. Ele roda no navegador, pode ser instalado como aplicativo (PWA ou desktop) e funciona offline.
+
+- **Três cofres separados:** Pessoal, Trabalho e Compartilhado, cada um com seus itens.
+- **Importação do navegador:** traga as senhas salvas no Chrome, Edge, Brave, Opera, Firefox ou Safari (ou um CSV do Bitwarden, LastPass ou 1Password). Você revisa cada linha, vê duplicados e senhas fracas e escolhe o cofre de cada uma. Nada que já está no cofre é alterado ou apagado.
+- **Saúde do cofre:** uma nota de 0 a 100 e a lista do que corrigir primeiro: senhas vazadas, fracas e repetidas. A verificação online usa o Have I Been Pwned com k-anonimato, então sua senha nunca sai do aparelho.
+- **Sincronização entre aparelhos sem servidor:** escolha uma pasta que você já sincroniza (Syncthing, OneDrive, Google Drive, Dropbox) e o VaultSecure mantém lá um arquivo criptografado sempre atualizado. Edições, novos itens e exclusões chegam aos outros aparelhos.
+- **Backups:** exporte um cofre ou todos para um arquivo `.vault` criptografado e restaure em outro aparelho, inclusive já na primeira tela, antes de criar um cofre.
+- **Gerador de senhas:** senhas aleatórias longas ou frases fáceis de digitar.
+- **Proteções extras:** verificação em duas etapas (TOTP), certificado digital X.509 opcional para desbloquear, bloqueio automático por inatividade, limpeza automática da área de transferência, limite de tentativas erradas e uma senha de coação que abre um cofre de fachada.
+- **Inglês e português**, escolhidos na primeira vez que você abre o cofre e alteráveis nas Configurações. Quatro temas e seis cores de destaque.
+
+### Como seus dados são protegidos
+
+- **Zero-knowledge.** Sua senha mestra nunca é guardada nem enviada. Se você esquecê-la, ninguém consegue recuperar o cofre.
+- **Derivação da chave:** PBKDF2 (HMAC-SHA256, 250.000 iterações) com salt aleatório de 16 bytes por cofre.
+- **Criptografia:** AES-256-GCM com um IV novo de 96 bits a cada gravação, usando a Web Crypto API do navegador.
+- **Arquivos de sincronização e de backup** usam a mesma criptografia. Quem pegar o arquivo vê apenas bytes aleatórios.
+
+### Como começar
+
+Requisitos: **Node.js 18+** e npm.
+
+```bash
+git clone https://github.com/itsbravos/VaultSecure.git
+cd VaultSecure
+npm install
+npm run dev        # http://localhost:3000
+```
+
+A primeira tela permite **criar um cofre** ou **restaurar um backup** de outro aparelho. Depois disso, um tour rápido mostra onde fica cada coisa.
+
+#### Instalar como aplicativo
+
+- **PWA (Windows, macOS, Linux, Android):** gere o build e rode o preview; depois use o ícone de instalar na barra de endereço do Chrome ou do Edge.
+  ```bash
+  npm run build
+  npm run preview    # http://localhost:4173
+  ```
+  O navegador só permite instalar e usar o cache offline em **HTTPS** ou em **localhost**.
+- **GitHub Pages:** o workflow incluído (`.github/workflows/deploy-pages.yml`) publica o app a cada push na `main`. Ative uma vez em **Settings › Pages › Source: GitHub Actions**, abra o endereço HTTPS no celular e escolha **Instalar aplicativo**.
+- **App desktop (Electron):**
+  ```bash
+  npm run electron:dev             # janela Electron com hot reload
+  npm run electron:build           # instalador para o sistema atual, em release/
+  npm run electron:build:win       # .exe (NSIS)
+  npm run electron:build:mac       # .dmg
+  npm run electron:build:linux     # AppImage
+  ```
+
+### Importar as senhas do navegador
+
+1. Vá em **Backup › Importar senhas do navegador** (ou **Importar do navegador** na tela inicial).
+2. Escolha o navegador. O app mostra onde fica a opção de exportar. No Chrome, por exemplo, abra `chrome://password-manager/settings` e escolha **Exportar senhas**.
+3. Arraste o arquivo `.csv`, revise as linhas, escolha o cofre de cada uma e importe.
+4. **Apague o `.csv` exportado depois.** Ele contém todas as senhas sem criptografia.
+
+### Sincronizar entre aparelhos
+
+- **Chrome ou Edge no computador (automático):** em **Configurações › Sincronizar entre aparelhos**, clique em **Escolher pasta** e selecione uma pasta que já sincroniza. Faça o mesmo nos outros computadores. Na primeira vez em que um segundo aparelho se conecta, ele pede a senha mestra usada no primeiro, uma única vez, para vincular os dois.
+- **Celular, Firefox e Safari (manual):** esses navegadores não acessam pastas. Use **Mesclar arquivo** para trazer o arquivo de sincronização e **Baixar arquivo atualizado** para levar suas mudanças de volta.
+
+### Testes
+
+```bash
+npm test               # roda uma vez
+npm run test:watch
+npm run test:coverage
+```
+
+Os testes cobrem a criptografia (PBKDF2, ida e volta do AES-GCM), o importador de CSV do navegador, a mesclagem do sync e uma simulação de sincronização entre dois aparelhos com criptografia real.
+
+### Licença
+
+[MIT](LICENSE)
