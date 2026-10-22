@@ -19,7 +19,7 @@ import {
   FileUp,
 } from 'lucide-react';
 import { VaultItem, ItemCategory, CustomField, VaultSettings, VaultAttachment } from '../types';
-import { calculatePasswordStrength, generatePassword, isLocalLeakedPassword } from '../lib/crypto';
+import { calculatePasswordStrength, generatePassword, isLocalLeakedPassword, randomString } from '../lib/crypto';
 import { getAccent, getTheme, strengthTone } from '../lib/theme';
 import { alertDialog } from './DialogHost';
 import { tr } from '../lib/i18n';
@@ -81,7 +81,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         const newAtt: VaultAttachment = {
-          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: `att-${Date.now()}-${randomString(8)}`,
           name: file.name,
           type: file.type || 'application/octet-stream',
           size: file.size,
@@ -139,7 +139,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       passwordHistory = [
         ...passwordHistory,
         {
-          id: `hist-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          id: `hist-${Date.now()}-${randomString(8)}`,
           password: initialItem.password,
           updatedAt: initialItem.updatedAt || Date.now(),
         },

@@ -18,10 +18,19 @@ import {
   Globe,
 } from 'lucide-react';
 import { AuthSession, VaultSettings } from '../types';
-import { verifyMasterPassword, initializeNewVault, saveEncryptedVaultItems } from '../lib/storage';
+import {
+  verifyMasterPassword,
+  initializeNewVault,
+  saveEncryptedVaultItems,
+  decryptVaultSettings,
+  saveDecryptedSettings,
+  loadFailedAttempts,
+  saveFailedAttempts,
+} from '../lib/storage';
+import { setLegacySyncKey } from '../lib/syncEngine';
 import { verifyTOTP, getTotpRemainingSeconds } from '../lib/totp';
 import { performCertSignatureChallenge, generateTestDigitalCert } from '../lib/pki';
-import { calculatePasswordStrength, deriveMasterKey, decryptVaultData, base64ToBuffer } from '../lib/crypto';
+import { calculatePasswordStrength, deriveMasterKey, decryptVaultData, base64ToBuffer, kdfIterationsOf } from '../lib/crypto';
 import { ExportedVaultItem, groupItemsByVault } from '../lib/backup';
 import { getAccent, getTheme, strengthTone } from '../lib/theme';
 import { Guilloche } from './Guilloche';
@@ -38,15 +47,27 @@ interface LockScreenProps {
 
 export const LockScreen: React.FC<LockScreenProps> = ({
   session,
-  settings,
+  settings: plainSettings,
   onSuccessUnlock,
   onSessionUpdate,
   onResetVault,
   onChangeLanguage,
 }) => {
+  // 2FA / certificate settings are encrypted: they only exist once the password is right
+  const [unlockedSettings, setUnlockedSettings] = useState<VaultSettings | null>(null);
+  const settings = unlockedSettings ?? plainSettings;
+  // Remounted half-way through (e.g. language switch on the 2FA step): reopen them
+  useEffect(() => {
+    if (!unlockedSettings && session.step !== 'master_pass' && session.masterKey && session.salt) {
+      decryptVaultSettings(session.masterKey, session.salt)
+        .then(r => setUnlockedSettings(r.settings))
+        .catch(() => {});
+    }
+  }, []);
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [totpInput, setTotpInput] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
   const [totpCountdown, setTotpCountdown] = useState(getTotpRemainingSeconds());
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -99,10 +120,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       const res = await verifyMasterPassword(passwordInput);
 
       if (res.valid && res.masterKey && res.salt) {
+        saveFailedAttempts(0);
         if (res.isDuress) {
           onSuccessUnlock(res.masterKey, res.salt, true);
           return;
         }
+        setLegacySyncKey(res.legacyKey ?? null);
+        const { settings: full } = await decryptVaultSettings(res.masterKey, res.salt);
+        setUnlockedSettings(full);
 
         onSessionUpdate(prev => ({
           ...prev,
@@ -113,15 +138,17 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         }));
 
         // Determine next step based on settings
-        if (settings.require2FA && settings.totpSecret) {
+        if (full.require2FA && full.totpSecret) {
           onSessionUpdate(prev => ({ ...prev, step: 'totp_2fa' }));
-        } else if (settings.requireDigitalCert && settings.digitalCertificates.length > 0) {
+        } else if (full.requireDigitalCert && full.digitalCertificates.length > 0) {
           onSessionUpdate(prev => ({ ...prev, step: 'digital_cert' }));
         } else {
           onSuccessUnlock(res.masterKey, res.salt);
         }
       } else {
-        const nextFailed = session.failedAttempts + 1;
+        // Read from storage, not the session: a page reload must not reset the count
+        const nextFailed = loadFailedAttempts() + 1;
+        saveFailedAttempts(nextFailed);
         onSessionUpdate(prev => ({ ...prev, failedAttempts: nextFailed }));
 
         if (settings.selfDestructAttempts > 0 && nextFailed >= settings.selfDestructAttempts) {
@@ -144,7 +171,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   // Handle Google Authenticator TOTP Submission
   const handleTotpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!totpInput.trim() || totpInput.length !== 6) {
+    if (useBackupCode ? !totpInput.trim() : totpInput.length !== 6) {
       setErrorMsg(tr("Digite um código de 6 dígitos válido do Google Authenticator."));
       return;
     }
@@ -153,7 +180,20 @@ export const LockScreen: React.FC<LockScreenProps> = ({
     setErrorMsg('');
 
     try {
-      const isTotpValid = await verifyTOTP(settings.totpSecret, totpInput);
+      let isTotpValid = false;
+      if (useBackupCode) {
+        // Each emergency code works once
+        const code = totpInput.trim().toUpperCase();
+        const remaining = settings.backupCodes.filter(c => c.toUpperCase() !== code);
+        isTotpValid = remaining.length < settings.backupCodes.length;
+        if (isTotpValid && session.masterKey && session.salt) {
+          const updated = { ...settings, backupCodes: remaining };
+          setUnlockedSettings(updated);
+          await saveDecryptedSettings(updated, session.masterKey, session.salt);
+        }
+      } else {
+        isTotpValid = await verifyTOTP(settings.totpSecret, totpInput);
+      }
 
       if (isTotpValid) {
         onSessionUpdate(prev => ({ ...prev, passedTotp: true }));
@@ -164,7 +204,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           onSuccessUnlock(session.masterKey, session.salt);
         }
       } else {
-        setErrorMsg(tr("Código do Google Authenticator inválido ou expirado."));
+        setErrorMsg(useBackupCode ? tr("Código de emergência inválido ou já usado.") : tr("Código do Google Authenticator inválido ou expirado."));
       }
     } catch (err: any) {
       setErrorMsg(tr("Erro ao verificar o código de autenticação."));
@@ -278,7 +318,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
       let restoredItems: ExportedVaultItem[];
       if (parsed.ciphertext && parsed.iv && parsed.salt) {
-        const fileKey = await deriveMasterKey(restorePassword, base64ToBuffer(parsed.salt));
+        const fileKey = await deriveMasterKey(restorePassword, base64ToBuffer(parsed.salt), kdfIterationsOf(parsed));
         restoredItems = await decryptVaultData<ExportedVaultItem[]>(parsed, fileKey);
       } else if (Array.isArray(parsed)) {
         restoredItems = parsed;
@@ -601,7 +641,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               </button>
 
               <p className={`text-xs ${L.muted2} leading-relaxed text-center`}>
-                {tr("Sua senha mestra deriva a chave via PBKDF2 (250.000 iterações). Não há como recuperá-la — guarde-a bem.")}
+                {tr("Sua senha mestra deriva a chave via PBKDF2 (600.000 iterações). Não há como recuperá-la — guarde-a bem.")}
               </p>
             </form>
             )}
@@ -684,22 +724,37 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                   <div className="space-y-1">
                     <h3 className={`text-[15px] font-semibold ${L.text}`}>{tr("Verificação em duas etapas")}</h3>
                     <p className={`text-[13px] ${L.muted}`}>
-                      {tr("Insira o código de 6 dígitos do seu app autenticador.")}
+                      {useBackupCode
+                        ? tr("Insira um dos códigos de emergência que você guardou ao ativar o 2FA.")
+                        : tr("Insira o código de 6 dígitos do seu app autenticador.")}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      autoFocus
-                      value={totpInput}
-                      onChange={e => setTotpInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="000000"
-                      className={`${inputCls} py-3.5 text-center text-2xl tracking-[0.6em] font-mono ${L.title} ${L.placeholder}`}
-                    />
+                    {useBackupCode ? (
+                      <input
+                        type="text"
+                        maxLength={16}
+                        autoFocus
+                        autoComplete="off"
+                        value={totpInput}
+                        onChange={e => setTotpInput(e.target.value.replace(/[^A-Za-z0-9-]/g, ''))}
+                        placeholder="XXXXX-XXXXX"
+                        className={`${inputCls} py-3.5 text-center text-xl tracking-[0.2em] font-mono uppercase ${L.title} ${L.placeholder}`}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        autoFocus
+                        value={totpInput}
+                        onChange={e => setTotpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="000000"
+                        className={`${inputCls} py-3.5 text-center text-2xl tracking-[0.6em] font-mono ${L.title} ${L.placeholder}`}
+                      />
+                    )}
 
                     <div className={`flex items-center gap-2 text-xs ${L.muted2}`}>
                       <div className={`flex-1 h-1 rounded-full ${L.track} overflow-hidden`}>
@@ -714,7 +769,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isLoading || totpInput.length !== 6}
+                    disabled={isLoading || (useBackupCode ? !totpInput.trim() : totpInput.length !== 6)}
                     className={`w-full py-3 ${accent.bgBtn} ${accent.bgBtnHover} disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl ${accent.shadowAccent} flex items-center justify-center gap-2 transition cursor-pointer`}
                   >
                     {isLoading ? (
@@ -727,6 +782,20 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                       </>
                     )}
                   </button>
+
+                  {settings.backupCodes?.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseBackupCode(v => !v);
+                        setTotpInput('');
+                        setErrorMsg('');
+                      }}
+                      className={`w-full text-center text-xs ${L.muted} hover:underline cursor-pointer`}
+                    >
+                      {useBackupCode ? tr("Usar o app autenticador") : tr("Perdeu o celular? Usar código de emergência")}
+                    </button>
+                  )}
                 </form>
               )}
 
@@ -830,6 +899,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             <Cpu className="w-3.5 h-3.5 shrink-0" />
             <span className="whitespace-nowrap">{tr("Criptografado neste dispositivo (AES-256)")}</span>
           </div>
+          <a
+            href="https://github.com/itsbravos/VaultSecure"
+            target="_blank"
+            rel="noreferrer"
+            className={`text-center ${L.hoverText} transition`}
+          >
+            {tr("Projeto open source, sem auditoria de segurança independente")}
+          </a>
 
           <div className={`flex items-center gap-3 ${L.muted}`}>
             {onChangeLanguage && (

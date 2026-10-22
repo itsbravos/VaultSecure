@@ -17,7 +17,14 @@ import {
   clearAllVaultData,
   changeMasterPassword,
   DECOY_DURESS_ITEMS,
+  decryptVaultSettings,
+  activateSettingsKey,
+  deactivateSettingsKey,
+  loadFailedAttempts,
+  requestPersistentStorage,
 } from './lib/storage';
+import { isFolderSyncSupported } from './lib/syncFolder';
+import { setLegacySyncKey } from './lib/syncEngine';
 
 import { LockScreen } from './components/LockScreen';
 import { VaultHeader } from './components/VaultHeader';
@@ -133,7 +140,7 @@ export default function App() {
       passedMasterPass: false,
       passedTotp: false,
       passedCert: false,
-      failedAttempts: 0,
+      failedAttempts: loadFailedAttempts(),
     };
   });
 
@@ -196,6 +203,10 @@ export default function App() {
 
   // Lock Vault Action
   const handleLockVault = useCallback(() => {
+    // Decrypted secrets (2FA seed, certificates...) leave memory with the key
+    deactivateSettingsKey();
+    setLegacySyncKey(null);
+    setSettings(loadVaultSettings());
     setSession(prev => ({
       ...prev,
       isUnlocked: false,
@@ -267,6 +278,9 @@ export default function App() {
   const handleSuccessUnlock = async (masterKey: CryptoKey, salt: Uint8Array, isDuress = false, _isFirstTimeSetup = false) => {
     try {
       if (isDuress) {
+        // Decoy session: settings stay the plain ones and the encrypted part is never touched
+        deactivateSettingsKey();
+        setSettings(loadVaultSettings());
         setItems(DECOY_DURESS_ITEMS);
         setSession(prev => ({
           ...prev,
@@ -284,7 +298,8 @@ export default function App() {
       const decryptedItems = await loadEncryptedVaultItems(masterKey, activeVaultId);
       setItems(decryptedItems);
       // First-run setup writes settings (e.g. the owner's name) straight to storage
-      const stored = loadVaultSettings();
+      const { settings: stored, duressNeedsReset } = await decryptVaultSettings(masterKey, salt);
+      activateSettingsKey(masterKey, salt);
       setSettings(stored);
       setActiveView('home');
       // First time in: walk through the app once the home screen has rendered
@@ -303,7 +318,13 @@ export default function App() {
       if (settings.autoLockMinutes > 0) {
         setAutoLockSecondsLeft(settings.autoLockMinutes * 60);
       }
-      showToast(tr("Cofre aberto."));
+      showToast(duressNeedsReset ? tr("Por segurança, a senha de coação precisa ser definida de novo.") : tr("Cofre aberto."));
+      // Phones: the browser may clear site data under storage pressure, and there is no folder sync
+      void requestPersistentStorage().then(persisted => {
+        if (!persisted && !isFolderSyncSupported()) {
+          setTimeout(() => showToast(tr("Este navegador pode apagar os dados do site. Exporte um backup de vez em quando.")), 3800);
+        }
+      });
     } catch (err: any) {
       console.error(err);
       showToast(tr("Erro ao carregar os itens descriptografados."));

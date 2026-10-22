@@ -216,6 +216,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ sync, theme, accent }) => 
       ) : (
         <p className={`text-[13px] p-3 rounded-lg border ${theme.borderInner} ${theme.textSecondary}`}>
           {tr("Este navegador não permite sincronizar automaticamente por pasta (só Chrome e Edge no computador permitem). Use o modo manual abaixo.")}
+          <br />
+          <strong className={theme.textPrimary}>{tr("No celular, o cofre existe só neste navegador:")}</strong>{' '}
+          {tr("limpar os dados do Chrome ou desinstalar o app apaga tudo. Baixe um backup criptografado de vez em quando.")}
         </p>
       )}
 

@@ -1,8 +1,37 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, type Plugin} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
+
+// GitHub Pages can't send security headers, so the policy ships as a <meta> tag.
+// No inline scripts or eval: an injected <script> or javascript: URL won't run, and
+// data can only be sent to the breach-check API. frame-ancestors isn't honored in
+// <meta>, so main.tsx refuses to render inside a frame instead.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // React/motion set inline styles
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com", // favicons, opt-in
+  "connect-src 'self' https://api.pwnedpasswords.com https://fonts.googleapis.com https://fonts.gstatic.com",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+].join('; ');
+
+const securityHeaders = (): Plugin => ({
+  name: 'vaultsecure-csp',
+  apply: 'build', // the dev server needs inline scripts for HMR
+  transformIndexHtml: html =>
+    html.replace(
+      '<meta charset="UTF-8" />',
+      `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />\n    <meta name="referrer" content="no-referrer" />`
+    ),
+});
 
 export default defineConfig(() => {
   // GitHub Pages serves this repo under /VaultSecure/, not the domain root, so
@@ -18,6 +47,8 @@ export default defineConfig(() => {
   return {
     base,
     plugins: [
+      // Electron loads from file://, where 'self' is unreliable; it is sandboxed there instead
+      ...(process.env.ELECTRON === 'true' ? [] : [securityHeaders()]),
       react(),
       tailwindcss(),
       VitePWA({

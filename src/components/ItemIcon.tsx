@@ -196,7 +196,7 @@ export const ItemIcon: React.FC<ItemIconProps> = ({
     size === 'sm' ? 'w-3.5 h-3.5' : size === 'lg' ? 'w-6 h-6' : 'w-5 h-5';
 
   // Favicons are drawn for white backgrounds, so they sit on a light tile in both themes
-  const canFetchOnline = settings?.enableOnlineFavicons !== false;
+  const canFetchOnline = settings?.enableOnlineFavicons === true; // opt-in: Google sees every domain asked for
   if (domain && canFetchOnline && !imgError) {
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
     return (

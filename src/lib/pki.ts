@@ -4,7 +4,7 @@
  */
 
 import { DigitalCertConfig } from '../types';
-import { hashSha256 } from './crypto';
+import { hashSha256, randomString } from './crypto';
 
 /**
  * Generate a new developer/test self-signed RSA Digital Certificate object
@@ -13,7 +13,7 @@ export async function generateTestDigitalCert(
   commonName: string = 'Usuario Teste e-CPF / e-CNPJ',
   issuerName: string = 'AC Raiz VaultSecure Brasil v1'
 ): Promise<DigitalCertConfig> {
-  const serialNumber = Math.floor(Math.random() * 1000000000000).toString(16).toUpperCase();
+  const serialNumber = randomString(16, '0123456789ABCDEF');
   const validFrom = new Date().toISOString();
   const validTo = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
 
@@ -42,7 +42,7 @@ export async function generateTestDigitalCert(
   const thumbprint = await hashSha256(spkiBase64);
 
   return {
-    id: `cert-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: `cert-${Date.now()}-${randomString(8)}`,
     name: commonName,
     subject: `CN=${commonName}, OU=Segurança Cibernética, O=VaultSecure PKI, C=BR`,
     issuer: `CN=${issuerName}, OU=Autoridade Certificadora, O=VaultSecure CA, C=BR`,
@@ -67,7 +67,7 @@ export async function performCertSignatureChallenge(cert: DigitalCertConfig): Pr
   errorMessage?: string;
 }> {
   try {
-    const challengeText = `VAULT_AUTH_CHALLENGE_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const challengeText = `VAULT_AUTH_CHALLENGE_${Date.now()}_${randomString(16)}`;
     const encoder = new TextEncoder();
     const challengeBytes = encoder.encode(challengeText);
 
@@ -169,14 +169,14 @@ export async function parseCertPemFile(pemContent: string, fileName: string): Pr
     commonName = cnMatch[1].trim();
   }
 
-  const serialNumber = Math.floor(Math.random() * 900000000000 + 100000000000).toString(16).toUpperCase();
+  const serialNumber = randomString(16, '0123456789ABCDEF');
   const validFrom = new Date().toISOString();
   const validTo = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
   const thumbprint = (await hashSha256(cleanPem)).toUpperCase();
 
   return {
-    id: `cert-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: `cert-${Date.now()}-${randomString(8)}`,
     name: commonName,
     subject: `CN=${commonName}, O=Certificado Importado, C=BR`,
     issuer: `CN=AC Emissora Válida, O=ICP-Brasil / Certificado Digital, C=BR`,

@@ -45,7 +45,7 @@ export const ZeroKnowledgeOnboardingModal: React.FC<ZeroKnowledgeOnboardingModal
       color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
       bullets: [
         {
-          head: tr("PBKDF2 com 250.000 iterações:"),
+          head: tr("PBKDF2 com 600.000 iterações:"),
           desc: tr("Sua Senha Mestra deriva a chave AES-256-GCM na memória do seu navegador."),
         },
         {

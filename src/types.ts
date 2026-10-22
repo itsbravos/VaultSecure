@@ -104,7 +104,8 @@ export interface VaultSettings {
 
   // Duress & Multi-Vault Settings
   duressEnabled?: boolean;
-  duressPasswordHash?: string; // SHA-256 of duress password
+  duressPassword?: string; // only ever stored inside the encrypted settings, to rebuild the duress verifier on re-key
+  duressPasswordHash?: string; // legacy SHA-256, dropped on the next unlock
   activeVaultId?: string; // 'pessoal' | 'trabalho' | 'compartilhado'
 }
 
@@ -113,6 +114,7 @@ export interface EncryptedVaultPayload {
   ciphertext: string; // Base64
   salt: string; // Base64
   version: number;
+  kdfIterations?: number; // PBKDF2 iterations of the key; absent = 250,000 (older files)
 }
 
 export interface AuthSession {

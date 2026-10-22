@@ -576,7 +576,8 @@ export const VaultItemDetail: React.FC<VaultItemDetailProps> = ({
                     </div>
 
                     <a
-                      href={att.dataUrl}
+                      // Only file data: an imported backup could carry a javascript: URL here
+                      href={att.dataUrl?.startsWith('data:') ? att.dataUrl : undefined}
                       download={att.name}
                       className={`px-3 py-1.5 rounded-lg ${activeAccent.bgBtn} ${activeAccent.bgBtnHover} text-white text-[11px] font-bold flex items-center gap-1.5 shadow transition-colors shrink-0`}
                     >

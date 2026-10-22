@@ -98,8 +98,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     let updatedSettings = { ...localSettings };
 
     if (duressInput.trim()) {
-      const hash = await import('../lib/crypto').then(m => m.hashSha256(duressInput.trim()));
-      updatedSettings.duressPasswordHash = hash;
+      // Stored only inside the encrypted settings; the unlock check uses a PBKDF2 verifier
+      updatedSettings.duressPassword = duressInput.trim();
       updatedSettings.duressEnabled = true;
       setDuressInput('');
     }
@@ -365,7 +365,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <KeyRound className="w-4 h-4" /> {tr("Senha Mestra")}
                 </span>
               </div>
-              <p className={`text-[11px] ${activeTheme.textMuted}`}>{tr("Criptografia PBKDF2 com 250.000 iterações e AES-256-GCM.")}</p>
+              <p className={`text-[11px] ${activeTheme.textMuted}`}>{tr("Criptografia PBKDF2 com 600.000 iterações e AES-256-GCM.")}</p>
             </div>
             <div className="space-y-2 pt-1">
               {onChangeMasterPassword && (
@@ -471,7 +471,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const updated = { ...settings, duressEnabled: false, duressPasswordHash: undefined };
+                    const updated = { ...settings, duressEnabled: false, duressPassword: undefined };
                     setLocalSettings(updated);
                     onSaveSettings(updated);
                     setDuressInput('');

@@ -1,5 +1,13 @@
 import { EncryptedVaultPayload, VaultItem } from '../types';
-import { decryptVaultData, deriveMasterKey, encryptVaultData, base64ToBuffer } from './crypto';
+import {
+  KDF_ITERATIONS,
+  decryptVaultData,
+  deriveMasterKey,
+  encryptVaultData,
+  base64ToBuffer,
+  iterationsOfKey,
+  kdfIterationsOf,
+} from './crypto';
 import {
   VAULT_IDS,
   VaultId,
@@ -22,6 +30,23 @@ export class SyncNeedsLinkError extends Error {
 }
 
 export class SyncFormatError extends Error {}
+
+// Key from before this device moved to more PBKDF2 iterations (same salt). Lets
+// it still read a shared file another device wrote before upgrading.
+let legacyKey: CryptoKey | null = null;
+export const setLegacySyncKey = (key: CryptoKey | null) => {
+  legacyKey = key;
+};
+
+/** The key that can open this payload, or null when it needs a link (other salt or iterations) */
+const readKeyFor = (payload: EncryptedVaultPayload, key: CryptoKey, salt: Uint8Array): CryptoKey | null => {
+  if (payload.salt !== saltToBase64(salt)) return null;
+  const iterations = kdfIterationsOf(payload);
+  const keyIterations = iterationsOfKey(key);
+  if (keyIterations === undefined || keyIterations === iterations) return key;
+  if (legacyKey && iterationsOfKey(legacyKey) === iterations) return legacyKey;
+  return null;
+};
 
 export interface SyncOutcome {
   vaults: Record<VaultId, VaultItem[]>;
@@ -66,11 +91,10 @@ export async function syncWithPayloads(
   key: CryptoKey,
   salt: Uint8Array
 ): Promise<SyncOutcome> {
-  const localSalt = saltToBase64(salt);
-  const mismatch = remotes.find(p => p.salt !== localSalt);
+  const mismatch = remotes.find(p => !readKeyFor(p, key, salt));
   if (mismatch) throw new SyncNeedsLinkError(mismatch);
 
-  const snapshots = await Promise.all(remotes.map(p => decryptSnapshot(p, key)));
+  const snapshots = await Promise.all(remotes.map(p => decryptSnapshot(p, readKeyFor(p, key, salt)!)));
 
   const vaults = await loadAllVaults(key);
   const tombstones = Object.fromEntries(VAULT_IDS.map(id => [id, loadTombstones(id)])) as Record<VaultId, Tombstones>;
@@ -107,7 +131,9 @@ export async function syncWithPayloads(
 /**
  * Adopt the salt of a file made on another device, so both derive the same key
  * from the same master password. Everything local is re-encrypted; nothing is
- * merged yet (the caller runs a normal sync right after).
+ * merged yet (the caller runs a normal sync right after). A file from a device
+ * still on fewer iterations is read with that key, but this device keeps the
+ * stronger one; the file is rewritten with it on the next sync.
  */
 export async function linkToSyncFile(
   payload: EncryptedVaultPayload,
@@ -115,10 +141,13 @@ export async function linkToSyncFile(
   currentKey: CryptoKey
 ): Promise<{ masterKey: CryptoKey; salt: Uint8Array }> {
   const salt = base64ToBuffer(payload.salt);
-  const masterKey = await deriveMasterKey(password, salt);
-  await decryptSnapshot(payload, masterKey).catch(() => {
+  const iterations = kdfIterationsOf(payload);
+  const fileKey = await deriveMasterKey(password, salt, iterations);
+  await decryptSnapshot(payload, fileKey).catch(() => {
     throw new SyncFormatError(tr("Senha mestra incorreta para este arquivo."));
   });
+  const masterKey = iterations >= KDF_ITERATIONS ? fileKey : await deriveMasterKey(password, salt);
+  if (masterKey !== fileKey) setLegacySyncKey(fileKey);
   await rekeyLocalVaults(currentKey, masterKey, salt);
   return { masterKey, salt };
 }
